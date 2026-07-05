@@ -52,11 +52,20 @@ bot.on('my_chat_member', async (ctx) => {
 
   const adder = update.from;
 
+  // getChatMember on a specific user is only guaranteed to work for bots
+  // that are themselves admins, so we use getChatAdministrators instead —
+  // it reliably works for a plain member bot too.
+  let isAdmin: boolean | null = null;
   try {
-    const member = await ctx.telegram.getChatMember(chat.id, adder.id);
-    const isAdmin = member.status === 'administrator' || member.status === 'creator';
+    const admins = await ctx.telegram.getChatAdministrators(chat.id);
+    isAdmin = admins.some((a) => a.user.id === adder.id);
+  } catch (err) {
+    console.error(`Could not verify admin status in chat ${chat.id}:`, err);
+    isAdmin = null; // verification unavailable, fail open below
+  }
 
-    if (!isAdmin) {
+  try {
+    if (isAdmin === false) {
       await ctx.telegram.sendMessage(
         chat.id,
         'Добавлять этого бота может только администратор группы. Покидаю чат.'
@@ -74,12 +83,26 @@ bot.on('my_chat_member', async (ctx) => {
     });
     await commitDataChanges(`Бот добавлен в группу ${chat.id}`);
 
+    const note =
+      isAdmin === null
+        ? '\n\n(Не удалось проверить права добавившего — рекомендуем на всякий случай сделать бота администратором группы.)'
+        : '';
     await ctx.telegram.sendMessage(
       chat.id,
-      'Бот подключён. Новые участники смогут пройти короткий опрос в личных сообщениях со мной, либо запустите его командой /start прямо здесь.'
+      'Бот подключён. Новые участники смогут пройти короткий опрос в личных сообщениях со мной, либо запустите его командой /start прямо здесь.' +
+        note
     );
   } catch (err) {
     console.error('Failed to process my_chat_member update:', err);
+    // Last-resort message so the group is never left without any feedback.
+    try {
+      await ctx.telegram.sendMessage(
+        chat.id,
+        'Бот добавлен, но во время настройки произошла ошибка. Попробуйте команду /start в этой группе.'
+      );
+    } catch (sendErr) {
+      console.error('Failed to send fallback message:', sendErr);
+    }
   }
 });
 
