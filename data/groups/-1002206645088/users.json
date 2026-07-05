@@ -1,4 +1,33 @@
 {
+  "1128530568": {
+    "userId": 1128530568,
+    "username": "idzanami69",
+    "groupChatId": -1002206645088,
+    "answers": {
+      "name": {
+        "field": "Имя",
+        "value": "Евгений"
+      },
+      "activision": {
+        "field": "Activision ID",
+        "value": "Idzanami#9271579"
+      },
+      "platform": {
+        "field": "Платформа",
+        "value": "Консоль"
+      },
+      "console_type": {
+        "field": "Консоль",
+        "value": "PS5"
+      },
+      "screenshot": {
+        "field": "Скриншот профиля",
+        "value": "(пропущено)"
+      }
+    },
+    "confirmedAt": "2026-07-05T17:08:00.255Z",
+    "updatedAt": "2026-07-05T17:08:00.255Z"
+  },
   "2144496778": {
     "userId": 2144496778,
     "username": "Roman345678",
