@@ -1,0 +1,28 @@
+[x-cloak] { display: none !important; }
+
+* {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+::selection {
+  background: #c9a92c;
+  color: #0c0c0c;
+}
+
+input, select, textarea {
+  outline: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: #c9a92c !important;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0c0c0c;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c2c2c;
+}

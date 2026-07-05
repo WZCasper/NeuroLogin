@@ -1,0 +1,51 @@
+[
+  {
+    "id": "name",
+    "field": "Имя",
+    "question": "Привет! Как тебя зовут?",
+    "type": "text",
+    "next": "activision"
+  },
+  {
+    "id": "activision",
+    "field": "Activision ID",
+    "question": "Укажи свой Activision ID.",
+    "type": "text",
+    "next": "platform"
+  },
+  {
+    "id": "platform",
+    "field": "Платформа",
+    "question": "На какой платформе играешь? (Напиши: PC или Консоль)",
+    "type": "text",
+    "branches": {
+      "pc": "pc_specs",
+      "пк": "pc_specs",
+      "консоль": "console_type",
+      "console": "console_type"
+    },
+    "default": "screenshot"
+  },
+  {
+    "id": "pc_specs",
+    "field": "Характеристики ПК",
+    "question": "Кратко укажи характеристики ПК (видеокарта, процессор).",
+    "type": "text",
+    "next": "screenshot"
+  },
+  {
+    "id": "console_type",
+    "field": "Консоль",
+    "question": "Какая консоль? (PS5 / Xbox Series)",
+    "type": "text",
+    "next": "screenshot"
+  },
+  {
+    "id": "screenshot",
+    "field": "Скриншот профиля",
+    "question": "Пришли скриншот своего игрового профиля (или отправь /skip, если пропускаешь).",
+    "type": "photo",
+    "optional": true,
+    "next": "confirm"
+  }
+]

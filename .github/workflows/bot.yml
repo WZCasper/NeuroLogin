@@ -1,0 +1,48 @@
+name: Run NeuroLogin Bot
+
+on:
+  schedule:
+    # Restarts the poller every 5 hours so it never hits GitHub's 6h job limit.
+    - cron: '0 */5 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: neurologin-bot-runtime
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure git identity
+        run: |
+          git config user.email "neurologin-bot@users.noreply.github.com"
+          git config user.name "NeuroLogin Bot"
+
+      - name: Install dependencies
+        working-directory: bot
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        working-directory: bot
+        run: npm run build
+
+      - name: Run bot (long polling)
+        working-directory: bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_GROUP_ID: ${{ secrets.ADMIN_GROUP_ID }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: npm start

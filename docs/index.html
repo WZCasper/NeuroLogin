@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NeuroLogin — Панель управления</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'sans-serif'] },
+        colors: {
+          bg: '#0c0c0c',
+          panel: '#151515',
+          panel2: '#1c1c1c',
+          border: '#2c2c2c',
+          yellow: '#c9a92c',
+          yellowDim: '#8a7620',
+          text: '#e8e6df',
+          textDim: '#9b988e'
+        },
+        borderRadius: {
+          none: '0px',
+          DEFAULT: '0px',
+          sm: '0px',
+          md: '0px',
+          lg: '0px',
+          xl: '0px',
+          full: '0px'
+        }
+      }
+    }
+  };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-bg text-text font-sans min-h-screen">
+
+<div x-data="adminApp()" x-init="init()" class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-border bg-panel px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 border border-yellow flex items-center justify-center text-yellow font-bold">N</div>
+      <h1 class="text-lg font-semibold tracking-wide">NeuroLogin <span class="text-textDim font-normal">/ панель управления</span></h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-textDim" x-show="token">Токен активен</span>
+      <button @click="openTokenModal" class="border border-border px-3 py-1.5 text-sm hover:border-yellow transition-colors">
+        <i class="fa-solid fa-key mr-1.5 text-yellow"></i><span x-text="token ? 'Сменить токен' : 'Ввести токен'"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="border-b border-border bg-panel px-6 flex gap-1">
+    <button @click="tab='users'" :class="tab==='users' ? 'border-b-2 border-yellow text-yellow' : 'text-textDim'" class="px-4 py-3 text-sm font-medium">
+      <i class="fa-solid fa-users mr-2"></i>Пользователи
+    </button>
+    <button @click="tab='survey'" :class="tab==='survey' ? 'border-b-2 border-yellow text-yellow' : 'text-textDim'" class="px-4 py-3 text-sm font-medium">
+      <i class="fa-solid fa-list-check mr-2"></i>Опрос и ветвления
+    </button>
+  </nav>
+
+  <main class="flex-1 px-6 py-6 max-w-6xl w-full mx-auto">
+
+    <!-- USERS TAB -->
+    <div x-show="tab==='users'">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold">Пользователи (<span x-text="users.length"></span>)</h2>
+        <button @click="loadData" class="text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors">
+          <i class="fa-solid fa-rotate mr-1.5"></i>Обновить
+        </button>
+      </div>
+
+      <div x-show="loading" class="text-textDim text-sm">Загрузка данных...</div>
+      <div x-show="!loading && users.length===0" class="text-textDim text-sm">Пока нет подтверждённых анкет.</div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <template x-for="u in users" :key="u.userId">
+          <div class="border border-border bg-panel p-4 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-9 h-9 border border-yellow flex items-center justify-center text-yellow text-sm font-semibold" x-text="initials(u)"></div>
+                <div>
+                  <div class="font-medium" x-text="fieldValue(u, 'Имя') || ('ID ' + u.userId)"></div>
+                  <div class="text-xs text-textDim" x-text="u.username ? '@' + u.username : 'ID ' + u.userId"></div>
+                </div>
+              </div>
+              <button @click="copyUser(u)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors" title="Скопировать все данные">
+                <i class="fa-regular fa-copy mr-1"></i>Копировать
+              </button>
+            </div>
+
+            <div class="border-t border-border pt-3 flex flex-col gap-1.5 text-sm">
+              <template x-for="(a, key) in u.answers" :key="key">
+                <div class="flex justify-between gap-3">
+                  <span class="text-textDim" x-text="a.field + ':'"></span>
+                  <span class="text-right" x-show="!editing[u.userId] || editing[u.userId] !== key" x-text="a.value"></span>
+                  <input
+                    x-show="editing[u.userId] === key"
+                    x-model="editBuffer"
+                    class="bg-panel2 border border-yellowDim px-2 py-0.5 text-right text-text w-1/2"
+                    @keydown.enter="saveField(u, key)"
+                  />
+                </div>
+              </template>
+            </div>
+
+            <template x-for="(a, key) in u.answers" :key="'media-'+key">
+              <img x-show="a.mediaPath" :src="rawUrl(a.mediaPath)" class="w-full border border-border" />
+            </template>
+
+            <div class="border-t border-border pt-3 flex gap-2 flex-wrap">
+              <template x-for="(a, key) in u.answers" :key="'btn-'+key">
+                <button @click="startEdit(u, key, a.value)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
+                  <i class="fa-solid fa-pen mr-1"></i><span x-text="'Изм. ' + a.field"></span>
+                </button>
+              </template>
+              <button x-show="editing[u.userId]" @click="saveField(u, editing[u.userId])" class="text-xs border border-yellow text-yellow px-2 py-1">
+                <i class="fa-solid fa-check mr-1"></i>Сохранить
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- SURVEY TAB -->
+    <div x-show="tab==='survey'">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold">Шаги опроса</h2>
+        <div class="flex gap-2">
+          <button @click="addStep" class="text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors">
+            <i class="fa-solid fa-plus mr-1.5"></i>Добавить шаг
+          </button>
+          <button @click="saveSurvey" class="text-sm border border-yellow text-yellow px-3 py-1.5">
+            <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Сохранить в репозиторий
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-3">
+        <template x-for="(step, idx) in survey" :key="step.id">
+          <div class="border border-border bg-panel p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label class="flex flex-col gap-1 text-xs text-textDim">ID шага
+                <input x-model="step.id" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-textDim">Поле (название данных)
+                <input x-model="step.field" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">Текст вопроса
+                <input x-model="step.question" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-textDim">Тип ответа
+                <select x-model="step.type" class="bg-panel2 border border-border px-2 py-1.5 text-text">
+                  <option value="text">Текст</option>
+                  <option value="photo">Фото</option>
+                  <option value="file">Файл</option>
+                </select>
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-textDim">Следующий шаг (по умолчанию)
+                <input x-model="step.next" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="id следующего шага" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">
+                Ветвления (ответ → id шага), формат: ответ1=шаг1, ответ2=шаг2
+                <input :value="branchesToText(step.branches)" @change="step.branches = textToBranches($event.target.value)" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="pc=pc_specs, консоль=console_type" />
+              </label>
+            </div>
+            <div class="flex justify-end mt-3">
+              <button @click="removeStep(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
+                <i class="fa-solid fa-trash mr-1"></i>Удалить шаг
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Token modal -->
+  <div x-show="tokenModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div class="bg-panel border border-border p-6 w-full max-w-md">
+      <h3 class="font-semibold mb-2">Токен доступа к GitHub</h3>
+      <p class="text-sm text-textDim mb-3">
+        Нужен для редактирования и сохранения данных. Токен хранится только в этой вкладке браузера (sessionStorage) и никуда не отправляется, кроме api.github.com.
+      </p>
+      <input x-model="tokenInput" type="password" placeholder="github_pat_..." class="w-full bg-panel2 border border-border px-3 py-2 text-text mb-3" />
+      <div class="flex justify-end gap-2">
+        <button @click="tokenModal=false" class="border border-border px-3 py-1.5 text-sm">Отмена</button>
+        <button @click="saveToken" class="border border-yellow text-yellow px-3 py-1.5 text-sm">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div x-show="toast" x-cloak x-text="toast" class="fixed bottom-4 right-4 bg-panel border border-yellow px-4 py-2 text-sm"></div>
+
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
