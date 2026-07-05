@@ -1,4 +1,33 @@
 {
+  "2144496778": {
+    "userId": 2144496778,
+    "username": "Roman345678",
+    "groupChatId": -1002206645088,
+    "answers": {
+      "name": {
+        "field": "Имя",
+        "value": "Роман"
+      },
+      "activision": {
+        "field": "Activision ID",
+        "value": "Hamlet_99#9168589"
+      },
+      "platform": {
+        "field": "Платформа",
+        "value": "Консоль"
+      },
+      "console_type": {
+        "field": "Консоль",
+        "value": "PS"
+      },
+      "screenshot": {
+        "field": "Скриншот профиля",
+        "value": "(пропущено)"
+      }
+    },
+    "confirmedAt": "2026-07-05T16:07:46.175Z",
+    "updatedAt": "2026-07-05T16:07:46.175Z"
+  },
   "5209485734": {
     "userId": 5209485734,
     "username": "WZ_Casper",
