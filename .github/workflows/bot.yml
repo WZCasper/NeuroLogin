@@ -42,7 +42,6 @@ jobs:
         working-directory: bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          ADMIN_GROUP_ID: ${{ secrets.ADMIN_GROUP_ID }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: npm start

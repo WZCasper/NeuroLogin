@@ -3,6 +3,8 @@ function adminApp() {
 
   return {
     tab: 'users',
+    groups: [],
+    selectedGroupId: null,
     users: [],
     survey: [],
     loading: false,
@@ -12,11 +14,9 @@ function adminApp() {
     editing: {}, // { [userId]: fieldKey }
     editBuffer: '',
     toast: '',
-    _usersSha: null,
-    _surveySha: null,
 
     init() {
-      this.loadData();
+      this.loadGroups();
     },
 
     showToast(msg) {
@@ -40,30 +40,62 @@ function adminApp() {
       return `https://raw.githubusercontent.com/${cfg.owner}/${cfg.repo}/${cfg.branch}/${relativePath}?t=${Date.now()}`;
     },
 
-    async loadData() {
+    async fetchJson(relativePath, fallback) {
+      try {
+        const resp = await fetch(this.rawUrl(relativePath));
+        if (!resp.ok) return fallback;
+        return await resp.json();
+      } catch (err) {
+        console.error(err);
+        return fallback;
+      }
+    },
+
+    async loadGroups() {
+      this.loading = true;
+      const groupsObj = await this.fetchJson('data/groups.json', {});
+      this.groups = Object.values(groupsObj).sort((a, b) => a.title.localeCompare(b.title));
+      if (this.groups.length && !this.selectedGroupId) {
+        this.selectedGroupId = this.groups[0].chatId;
+      }
+      if (this.selectedGroupId) {
+        await this.loadGroupData();
+      }
+      this.loading = false;
+    },
+
+    async selectGroup(chatId) {
+      this.selectedGroupId = Number(chatId);
+      await this.loadGroupData();
+    },
+
+    async loadGroupData() {
+      if (!this.selectedGroupId) return;
       this.loading = true;
       try {
-        const usersResp = await fetch(this.rawUrl('data/users.json'));
-        const usersJson = usersResp.ok ? await usersResp.json() : {};
-        this.users = Object.values(usersJson).sort((a, b) =>
+        const usersObj = await this.fetchJson(
+          `data/groups/${this.selectedGroupId}/users.json`,
+          {}
+        );
+        this.users = Object.values(usersObj).sort((a, b) =>
           (b.confirmedAt || '').localeCompare(a.confirmedAt || '')
         );
 
-        const surveyResp = await fetch(this.rawUrl('data/survey.json'));
-        if (surveyResp.ok) {
-          this.survey = await surveyResp.json();
-        } else {
-          const fallback = await fetch(
-            this.rawUrl('bot/src/config/survey.json')
-          );
-          this.survey = fallback.ok ? await fallback.json() : [];
+        let survey = await this.fetchJson(
+          `data/groups/${this.selectedGroupId}/survey.json`,
+          null
+        );
+        if (!survey) {
+          survey = await this.fetchJson('data/survey.json', []);
         }
-      } catch (err) {
-        console.error(err);
-        this.showToast('Ошибка загрузки данных');
+        this.survey = survey;
       } finally {
         this.loading = false;
       }
+    },
+
+    async loadData() {
+      await this.loadGroups();
     },
 
     fieldValue(user, fieldName) {
@@ -104,9 +136,9 @@ function adminApp() {
       this.users.forEach((u) => (usersObj[u.userId] = u));
 
       await this.commitFile(
-        'data/users.json',
+        `data/groups/${this.selectedGroupId}/users.json`,
         JSON.stringify(usersObj, null, 2),
-        `Админ обновил данные пользователя ${user.userId}`
+        `Админ обновил данные пользователя ${user.userId} (группа ${this.selectedGroupId})`
       );
     },
 
@@ -151,10 +183,11 @@ function adminApp() {
         this.openTokenModal();
         return;
       }
+      // Saved as a per-group override so different groups can run different surveys.
       await this.commitFile(
-        'data/survey.json',
+        `data/groups/${this.selectedGroupId}/survey.json`,
         JSON.stringify(this.survey, null, 2),
-        'Админ обновил конфигурацию опроса'
+        `Админ обновил опрос для группы ${this.selectedGroupId}`
       );
     },
 

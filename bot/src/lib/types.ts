@@ -18,7 +18,8 @@ export interface Answer {
 }
 
 export interface UserSession {
-  chatId: number;
+  privateChatId: number;
+  groupChatId: number;
   userId: number;
   username?: string;
   currentStepId: string;
@@ -30,7 +31,7 @@ export interface UserSession {
 export interface UserRecord {
   userId: number;
   username?: string;
-  chatId: number;
+  groupChatId: number;
   answers: Record<string, Answer>;
   confirmedAt: string;
   updatedAt: string;
@@ -42,4 +43,16 @@ export interface UsersDb {
 
 export interface SessionsDb {
   [userId: string]: UserSession;
+}
+
+export interface GroupRecord {
+  chatId: number;
+  title: string;
+  addedByUserId: number;
+  addedByUsername?: string;
+  addedAt: string;
+}
+
+export interface GroupsDb {
+  [chatId: string]: GroupRecord;
 }

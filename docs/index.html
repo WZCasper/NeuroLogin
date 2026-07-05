@@ -57,6 +57,24 @@
     </div>
   </header>
 
+  <!-- Group selector -->
+  <div class="border-b border-border bg-panel px-6 py-3 flex items-center gap-3">
+    <i class="fa-solid fa-layer-group text-yellow"></i>
+    <span class="text-sm text-textDim">Группа:</span>
+    <select
+      x-model="selectedGroupId"
+      @change="selectGroup($event.target.value)"
+      class="bg-panel2 border border-border px-3 py-1.5 text-sm text-text"
+    >
+      <template x-for="g in groups" :key="g.chatId">
+        <option :value="g.chatId" x-text="g.title"></option>
+      </template>
+    </select>
+    <span x-show="groups.length===0" class="text-sm text-textDim">
+      Бот пока не добавлен ни в одну группу.
+    </span>
+  </div>
+
   <!-- Tabs -->
   <nav class="border-b border-border bg-panel px-6 flex gap-1">
     <button @click="tab='users'" :class="tab==='users' ? 'border-b-2 border-yellow text-yellow' : 'text-textDim'" class="px-4 py-3 text-sm font-medium">

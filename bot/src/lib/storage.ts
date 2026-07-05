@@ -1,13 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { SurveyStep, UsersDb, SessionsDb } from './types';
+import { SurveyStep, UsersDb, SessionsDb, GroupsDb, GroupRecord } from './types';
 
 const DATA_DIR = path.resolve(__dirname, '..', '..', '..', 'data');
-const MEDIA_DIR = path.join(DATA_DIR, 'media');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const GROUPS_DIR = path.join(DATA_DIR, 'groups');
+const GROUPS_FILE = path.join(DATA_DIR, 'groups.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
-const SURVEY_FILE = path.resolve(__dirname, '..', 'config', 'survey.json');
-const SURVEY_OVERRIDE_FILE = path.join(DATA_DIR, 'survey.json');
+const DEFAULT_SURVEY_FILE = path.resolve(__dirname, '..', 'config', 'survey.json');
+const DEFAULT_SURVEY_OVERRIDE_FILE = path.join(DATA_DIR, 'survey.json');
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
@@ -32,13 +32,59 @@ function writeJson(filePath: string, data: unknown): void {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-export function loadUsers(): UsersDb {
-  return readJson<UsersDb>(USERS_FILE, {});
+function groupDir(groupChatId: number): string {
+  return path.join(GROUPS_DIR, String(groupChatId));
 }
 
-export function saveUsers(db: UsersDb): void {
-  writeJson(USERS_FILE, db);
+function groupUsersFile(groupChatId: number): string {
+  return path.join(groupDir(groupChatId), 'users.json');
 }
+
+function groupSurveyFile(groupChatId: number): string {
+  return path.join(groupDir(groupChatId), 'survey.json');
+}
+
+function groupMediaDir(groupChatId: number): string {
+  return path.join(groupDir(groupChatId), 'media');
+}
+
+// ---------- Groups registry ----------
+
+export function loadGroups(): GroupsDb {
+  return readJson<GroupsDb>(GROUPS_FILE, {});
+}
+
+export function saveGroups(db: GroupsDb): void {
+  writeJson(GROUPS_FILE, db);
+}
+
+export function registerGroup(record: GroupRecord): void {
+  const groups = loadGroups();
+  groups[String(record.chatId)] = record;
+  saveGroups(groups);
+  ensureDir(groupDir(record.chatId));
+}
+
+export function getGroup(chatId: number): GroupRecord | undefined {
+  const groups = loadGroups();
+  return groups[String(chatId)];
+}
+
+export function isKnownGroup(chatId: number): boolean {
+  return !!getGroup(chatId);
+}
+
+// ---------- Per-group users ----------
+
+export function loadUsers(groupChatId: number): UsersDb {
+  return readJson<UsersDb>(groupUsersFile(groupChatId), {});
+}
+
+export function saveUsers(groupChatId: number, db: UsersDb): void {
+  writeJson(groupUsersFile(groupChatId), db);
+}
+
+// ---------- Global sessions (one active survey per Telegram user in DM) ----------
 
 export function loadSessions(): SessionsDb {
   return readJson<SessionsDb>(SESSIONS_FILE, {});
@@ -48,21 +94,29 @@ export function saveSessions(db: SessionsDb): void {
   writeJson(SESSIONS_FILE, db);
 }
 
-export function loadSurvey(): SurveyStep[] {
-  // Admin panel can override the survey definition without touching bot code.
-  if (fs.existsSync(SURVEY_OVERRIDE_FILE)) {
-    return readJson<SurveyStep[]>(SURVEY_OVERRIDE_FILE, []);
+// ---------- Survey configuration (global default, optional per-group override) ----------
+
+export function loadSurvey(groupChatId: number): SurveyStep[] {
+  const overridePath = groupSurveyFile(groupChatId);
+  if (fs.existsSync(overridePath)) {
+    return readJson<SurveyStep[]>(overridePath, []);
   }
-  return readJson<SurveyStep[]>(SURVEY_FILE, []);
+  if (fs.existsSync(DEFAULT_SURVEY_OVERRIDE_FILE)) {
+    return readJson<SurveyStep[]>(DEFAULT_SURVEY_OVERRIDE_FILE, []);
+  }
+  return readJson<SurveyStep[]>(DEFAULT_SURVEY_FILE, []);
 }
 
+// ---------- Media ----------
+
 export function saveMediaFile(
+  groupChatId: number,
   userId: number,
   field: string,
   buffer: Buffer,
   extension: string
 ): string {
-  const userMediaDir = path.join(MEDIA_DIR, String(userId));
+  const userMediaDir = path.join(groupMediaDir(groupChatId), String(userId));
   ensureDir(userMediaDir);
   const safeField = field.replace(/[^a-zA-Z0-9_-]/g, '_');
   const fileName = `${safeField}${extension}`;
@@ -73,7 +127,7 @@ export function saveMediaFile(
 
 export const paths = {
   DATA_DIR,
-  MEDIA_DIR,
-  USERS_FILE,
+  GROUPS_DIR,
+  GROUPS_FILE,
   SESSIONS_FILE,
 };

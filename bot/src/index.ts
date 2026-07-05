@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Telegraf, Markup, Context } from 'telegraf';
+import { message } from 'telegraf/filters';
 import {
   loadUsers,
   saveUsers,
@@ -7,9 +8,11 @@ import {
   saveSessions,
   loadSurvey,
   saveMediaFile,
+  registerGroup,
+  getGroup,
 } from './lib/storage';
 import { commitDataChanges } from './lib/git';
-import { logToAdminGroup } from './lib/notify';
+import { logToGroup } from './lib/notify';
 import { getStep, getFirstStep, resolveNextStepId } from './lib/surveyEngine';
 import { UserSession, UserRecord } from './lib/types';
 
@@ -19,15 +22,136 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
+let botUsername = '';
 
-function startSession(userId: number, chatId: number, username?: string): UserSession {
-  const survey = loadSurvey();
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function deepLink(groupChatId: number): string {
+  return `https://t.me/${botUsername}?start=${groupChatId}`;
+}
+
+// ---------------------------------------------------------------------------
+// Group admission: the bot can be added to any group, but only by an admin
+// of that group. If a non-admin adds it, the bot leaves immediately.
+// ---------------------------------------------------------------------------
+
+bot.on('my_chat_member', async (ctx) => {
+  const update = ctx.myChatMember;
+  const chat = update.chat;
+  if (chat.type !== 'group' && chat.type !== 'supergroup') return;
+
+  const oldStatus = update.old_chat_member.status;
+  const newStatus = update.new_chat_member.status;
+  const justAdded =
+    (oldStatus === 'left' || oldStatus === 'kicked') &&
+    (newStatus === 'member' || newStatus === 'administrator');
+
+  if (!justAdded) return;
+
+  const adder = update.from;
+
+  try {
+    const member = await ctx.telegram.getChatMember(chat.id, adder.id);
+    const isAdmin = member.status === 'administrator' || member.status === 'creator';
+
+    if (!isAdmin) {
+      await ctx.telegram.sendMessage(
+        chat.id,
+        'Добавлять этого бота может только администратор группы. Покидаю чат.'
+      );
+      await ctx.telegram.leaveChat(chat.id);
+      return;
+    }
+
+    registerGroup({
+      chatId: chat.id,
+      title: chat.title,
+      addedByUserId: adder.id,
+      addedByUsername: adder.username,
+      addedAt: new Date().toISOString(),
+    });
+    await commitDataChanges(`Бот добавлен в группу ${chat.id}`);
+
+    await ctx.telegram.sendMessage(
+      chat.id,
+      'Бот подключён. Новые участники смогут пройти короткий опрос в личных сообщениях со мной, либо запустите его командой /start прямо здесь.'
+    );
+  } catch (err) {
+    console.error('Failed to process my_chat_member update:', err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Greeting new members with a deep link to start the private survey
+// ---------------------------------------------------------------------------
+
+bot.on(message('new_chat_members'), async (ctx) => {
+  const chat = ctx.chat;
+  const group = getGroup(chat.id);
+  if (!group) return; // unknown/unauthorized group, ignore
+
+  const newcomers = ctx.message.new_chat_members.filter((m) => !m.is_bot);
+  if (newcomers.length === 0) return;
+
+  for (const user of newcomers) {
+    const mention = user.username ? `@${user.username}` : user.first_name;
+    await ctx.reply(
+      `Добро пожаловать, ${escapeHtml(mention)}! Чтобы получить доступ, пройди короткий опрос в личных сообщениях с ботом.`,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          Markup.button.url('Пройти опрос', deepLink(chat.id)),
+        ]),
+      }
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// /start — three contexts: inside a group, or in DM with/without payload
+// ---------------------------------------------------------------------------
+
+bot.start(async (ctx) => {
+  if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+    const group = getGroup(ctx.chat.id);
+    if (!group) {
+      await ctx.reply('Эта группа ещё не зарегистрирована. Переустановите бота как администратор группы.');
+      return;
+    }
+    await ctx.reply(
+      'Нажми кнопку ниже, чтобы пройти опрос в личных сообщениях.',
+      Markup.inlineKeyboard([Markup.button.url('Пройти опрос', deepLink(ctx.chat.id))])
+    );
+    return;
+  }
+
+  // Private chat.
+  const payload = ctx.startPayload;
+  const groupChatId = payload ? Number(payload) : NaN;
+
+  if (!payload || Number.isNaN(groupChatId) || !getGroup(groupChatId)) {
+    await ctx.reply(
+      'Чтобы пройти опрос, открой этого бота по ссылке из своей группы (команда /start в группе покажет кнопку).'
+    );
+    return;
+  }
+
+  const userId = ctx.from.id;
+  const survey = loadSurvey(groupChatId);
   const first = getFirstStep(survey);
+  if (!first) {
+    await ctx.reply('Опрос для этой группы пока не настроен.');
+    return;
+  }
+
   const session: UserSession = {
-    chatId,
+    privateChatId: ctx.chat.id,
+    groupChatId,
     userId,
-    username,
-    currentStepId: first ? first.id : 'confirm',
+    username: ctx.from.username,
+    currentStepId: first.id,
     answers: {},
     awaitingConfirm: false,
     startedAt: new Date().toISOString(),
@@ -35,11 +159,17 @@ function startSession(userId: number, chatId: number, username?: string): UserSe
   const sessions = loadSessions();
   sessions[String(userId)] = session;
   saveSessions(sessions);
-  return session;
-}
 
-async function askStep(ctx: Context, stepId: string): Promise<void> {
-  const survey = loadSurvey();
+  await ctx.reply('Начинаем короткий опрос.');
+  await ctx.reply(first.question + (first.optional ? '\n\n(необязательный вопрос — можно отправить /skip)' : ''));
+});
+
+// ---------------------------------------------------------------------------
+// Survey flow (private chat only)
+// ---------------------------------------------------------------------------
+
+async function askStep(ctx: Context, groupChatId: number, stepId: string): Promise<void> {
+  const survey = loadSurvey(groupChatId);
   const step = getStep(survey, stepId);
   if (!step) {
     await sendConfirmSummary(ctx);
@@ -56,10 +186,6 @@ function buildSummaryText(session: UserSession): string {
   return ['Проверь свои данные:', '', ...lines].join('\n');
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 async function sendConfirmSummary(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
   if (!userId) return;
@@ -71,59 +197,50 @@ async function sendConfirmSummary(ctx: Context): Promise<void> {
   sessions[String(userId)] = session;
   saveSessions(sessions);
 
-  await ctx.reply(
-    buildSummaryText(session),
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        Markup.button.callback('Подтвердить', 'confirm_yes'),
-        Markup.button.callback('Изменить', 'confirm_no'),
-      ]),
-    }
-  );
+  await ctx.reply(buildSummaryText(session), {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      Markup.button.callback('Подтвердить', 'confirm_yes'),
+      Markup.button.callback('Изменить', 'confirm_no'),
+    ]),
+  });
 }
 
 async function finalizeSurvey(ctx: Context, session: UserSession): Promise<void> {
-  const users = loadUsers();
+  const users = loadUsers(session.groupChatId);
   const record: UserRecord = {
     userId: session.userId,
     username: session.username,
-    chatId: session.chatId,
+    groupChatId: session.groupChatId,
     answers: session.answers,
     confirmedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
   users[String(session.userId)] = record;
-  saveUsers(users);
+  saveUsers(session.groupChatId, users);
 
   const sessions = loadSessions();
   delete sessions[String(session.userId)];
   saveSessions(sessions);
 
-  await commitDataChanges(`Опрос завершён: пользователь ${session.userId}`);
-  await logToAdminGroup(bot, record);
+  await commitDataChanges(
+    `Опрос завершён: пользователь ${session.userId} (группа ${session.groupChatId})`
+  );
+  await logToGroup(bot, session.groupChatId, record);
 
   await ctx.reply('Спасибо! Данные сохранены.');
 }
 
-bot.start(async (ctx) => {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-  const username = ctx.from.username;
-  const session = startSession(userId, chatId, username);
-  await ctx.reply('Начинаем короткий опрос.');
-  await askStep(ctx, session.currentStepId);
-});
-
 bot.command('skip', async (ctx) => {
+  if (ctx.chat.type !== 'private') return;
   const userId = ctx.from.id;
   const sessions = loadSessions();
   const session = sessions[String(userId)];
   if (!session) {
-    await ctx.reply('Опрос ещё не начат. Отправь /start.');
+    await ctx.reply('Опрос ещё не начат. Открой ссылку из своей группы.');
     return;
   }
-  const survey = loadSurvey();
+  const survey = loadSurvey(session.groupChatId);
   const step = getStep(survey, session.currentStepId);
   if (!step || !step.optional) {
     await ctx.reply('Этот вопрос нельзя пропустить.');
@@ -132,29 +249,30 @@ bot.command('skip', async (ctx) => {
   await advance(ctx, session, '(пропущено)');
 });
 
-bot.on('text', async (ctx) => {
+bot.on(message('text'), async (ctx) => {
+  if (ctx.chat.type !== 'private') return;
+  if (ctx.message.text.startsWith('/')) return; // let command handlers deal with it
+
   const userId = ctx.from.id;
   const sessions = loadSessions();
   const session = sessions[String(userId)];
 
   if (!session) {
-    await ctx.reply('Чтобы начать опрос, отправь /start.');
+    await ctx.reply('Чтобы начать опрос, открой ссылку из своей группы.');
     return;
   }
 
   if (session.awaitingConfirm) {
-    // User typed instead of pressing a button — remind them.
     await ctx.reply('Пожалуйста, используй кнопки «Подтвердить» или «Изменить» выше.');
     return;
   }
 
-  const survey = loadSurvey();
+  const survey = loadSurvey(session.groupChatId);
   const step = getStep(survey, session.currentStepId);
   if (!step) {
     await sendConfirmSummary(ctx);
     return;
   }
-
   if (step.type !== 'text') {
     await ctx.reply('Ожидается файл/фото для этого вопроса.');
     return;
@@ -163,16 +281,17 @@ bot.on('text', async (ctx) => {
   await advance(ctx, session, ctx.message.text);
 });
 
-bot.on('photo', async (ctx) => {
+bot.on(message('photo'), async (ctx) => {
+  if (ctx.chat.type !== 'private') return;
   const userId = ctx.from.id;
   const sessions = loadSessions();
   const session = sessions[String(userId)];
   if (!session) {
-    await ctx.reply('Чтобы начать опрос, отправь /start.');
+    await ctx.reply('Чтобы начать опрос, открой ссылку из своей группы.');
     return;
   }
 
-  const survey = loadSurvey();
+  const survey = loadSurvey(session.groupChatId);
   const step = getStep(survey, session.currentStepId);
   if (!step || step.type !== 'photo') {
     await ctx.reply('На этом шаге фото не ожидается.');
@@ -186,8 +305,7 @@ bot.on('photo', async (ctx) => {
   const response = await fetch(fileUrl);
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
-  const extension = '.jpg';
-  const relativePath = saveMediaFile(session.userId, step.field, buffer, extension);
+  const relativePath = saveMediaFile(session.groupChatId, session.userId, step.field, buffer, '.jpg');
 
   session.answers[step.id] = {
     field: step.field,
@@ -200,7 +318,7 @@ bot.on('photo', async (ctx) => {
 });
 
 async function advance(ctx: Context, session: UserSession, rawAnswer: string): Promise<void> {
-  const survey = loadSurvey();
+  const survey = loadSurvey(session.groupChatId);
   const step = getStep(survey, session.currentStepId);
   if (!step) return;
 
@@ -215,8 +333,9 @@ async function proceedTo(
   nextId: string | undefined
 ): Promise<void> {
   const sessions = loadSessions();
+  const survey = loadSurvey(session.groupChatId);
 
-  if (!nextId || !getStep(loadSurvey(), nextId)) {
+  if (!nextId || !getStep(survey, nextId)) {
     sessions[String(session.userId)] = session;
     saveSessions(sessions);
     await sendConfirmSummary(ctx);
@@ -226,7 +345,7 @@ async function proceedTo(
   session.currentStepId = nextId;
   sessions[String(session.userId)] = session;
   saveSessions(sessions);
-  await askStep(ctx, nextId);
+  await askStep(ctx, session.groupChatId, nextId);
 }
 
 bot.action('confirm_yes', async (ctx) => {
@@ -235,7 +354,7 @@ bot.action('confirm_yes', async (ctx) => {
   const sessions = loadSessions();
   const session = sessions[String(userId)];
   if (!session) {
-    await ctx.answerCbQuery('Сессия не найдена, начни заново с /start');
+    await ctx.answerCbQuery('Сессия не найдена, начни заново по ссылке из группы');
     return;
   }
   await ctx.answerCbQuery();
@@ -246,11 +365,34 @@ bot.action('confirm_yes', async (ctx) => {
 bot.action('confirm_no', async (ctx) => {
   const userId = ctx.from?.id;
   if (!userId) return;
+  const sessions = loadSessions();
+  const oldSession = sessions[String(userId)];
+  if (!oldSession) {
+    await ctx.answerCbQuery('Сессия не найдена, начни заново по ссылке из группы');
+    return;
+  }
   await ctx.answerCbQuery();
   await ctx.editMessageReplyMarkup(undefined);
-  const session = startSession(userId, ctx.chat!.id, ctx.from?.username);
+
+  const survey = loadSurvey(oldSession.groupChatId);
+  const first = getFirstStep(survey);
+  if (!first) return;
+
+  const session: UserSession = {
+    privateChatId: oldSession.privateChatId,
+    groupChatId: oldSession.groupChatId,
+    userId,
+    username: oldSession.username,
+    currentStepId: first.id,
+    answers: {},
+    awaitingConfirm: false,
+    startedAt: new Date().toISOString(),
+  };
+  sessions[String(userId)] = session;
+  saveSessions(sessions);
+
   await ctx.reply('Хорошо, начнём заново.');
-  await askStep(ctx, session.currentStepId);
+  await askStep(ctx, session.groupChatId, session.currentStepId);
 });
 
 bot.catch((err, ctx) => {
@@ -258,7 +400,9 @@ bot.catch((err, ctx) => {
 });
 
 async function main(): Promise<void> {
-  console.log('NeuroLogin bot starting (long polling)...');
+  const me = await bot.telegram.getMe();
+  botUsername = me.username;
+  console.log(`NeuroLogin bot starting as @${botUsername} (long polling)...`);
   await bot.launch();
 }
 

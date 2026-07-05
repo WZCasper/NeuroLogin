@@ -1,19 +1,6 @@
 import { Telegraf } from 'telegraf';
 import { UserRecord } from './types';
 
-function formatRecord(record: UserRecord): string {
-  const lines = [
-    `<b>Новая анкета подтверждена</b>`,
-    `ID пользователя: <code>${record.userId}</code>`,
-    record.username ? `Username: @${record.username}` : undefined,
-    '',
-    ...Object.values(record.answers).map((a) => `<b>${a.field}:</b> ${escapeHtml(a.value)}`),
-    '',
-    `Подтверждено: ${record.confirmedAt}`,
-  ].filter(Boolean);
-  return lines.join('\n');
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -21,24 +8,33 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function formatRecord(record: UserRecord): string {
+  const lines = [
+    '<b>Анкета подтверждена</b>',
+    `Пользователь: <code>${record.userId}</code>${record.username ? ' (@' + record.username + ')' : ''}`,
+    '',
+    ...Object.values(record.answers).map((a) => `<b>${a.field}:</b> ${escapeHtml(a.value)}`),
+    '',
+    `Подтверждено: ${record.confirmedAt}`,
+  ];
+  return lines.join('\n');
+}
+
 /**
- * Sends a copy of the confirmed record into the admin group, which acts as a
- * human-readable, append-only backup of the JSON data stored in the repo.
+ * Posts a copy of the confirmed record back into the group it came from.
+ * This turns the group itself into a human-readable log of authorized
+ * members, in addition to the JSON copy stored in the repository.
  */
-export async function logToAdminGroup(bot: Telegraf, record: UserRecord): Promise<void> {
-  const groupId = process.env.ADMIN_GROUP_ID;
-  if (!groupId) return;
-
+export async function logToGroup(
+  bot: Telegraf,
+  groupChatId: number,
+  record: UserRecord
+): Promise<void> {
   try {
-    const photoAnswer = Object.values(record.answers).find((a) => a.mediaPath);
-    const text = formatRecord(record);
-
-    if (photoAnswer?.mediaPath) {
-      await bot.telegram.sendMessage(groupId, text, { parse_mode: 'HTML' });
-    } else {
-      await bot.telegram.sendMessage(groupId, text, { parse_mode: 'HTML' });
-    }
+    await bot.telegram.sendMessage(groupChatId, formatRecord(record), {
+      parse_mode: 'HTML',
+    });
   } catch (err) {
-    console.error('Failed to log to admin group:', err);
+    console.error(`Failed to log confirmed record to group ${groupChatId}:`, err);
   }
 }
