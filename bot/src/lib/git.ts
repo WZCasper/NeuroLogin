@@ -29,9 +29,6 @@ export function commitDataChanges(message: string): Promise<void> {
 }
 
 async function doCommit(message: string): Promise<void> {
-  const token = process.env.GH_TOKEN;
-  const repo = process.env.GH_REPO; // format: owner/repo
-
   await run('git', ['add', 'data']);
 
   const status = await run('git', ['status', '--porcelain', '--', 'data']);
@@ -39,18 +36,20 @@ async function doCommit(message: string): Promise<void> {
     return; // nothing changed
   }
 
-  await run('git', ['-c', 'user.email=neurologin-bot@users.noreply.github.com', '-c', 'user.name=NeuroLogin Bot', 'commit', '-m', message]);
+  await run('git', [
+    '-c', 'user.email=neurologin-bot@users.noreply.github.com',
+    '-c', 'user.name=NeuroLogin Bot',
+    'commit', '-m', message,
+  ]);
 
-  if (token && repo) {
-    const remote = `https://x-access-token:${token}@github.com/${repo}.git`;
-    try {
-      await run('git', ['pull', '--rebase', remote, 'main']);
-    } catch (err) {
-      console.warn('Rebase pull skipped or failed, continuing with push:', (err as Error).message);
-    }
-    await run('git', ['push', remote, 'HEAD:main']);
-  } else {
-    // Local/dev fallback: push to whatever origin is already configured.
-    await run('git', ['push', 'origin', 'HEAD:main']);
+  // The checkout step already authenticated 'origin' with the right token,
+  // so there is no need (and no benefit) to build a separate remote URL —
+  // doing that previously caused a credential conflict that silently broke
+  // every push.
+  try {
+    await run('git', ['pull', '--rebase', 'origin', 'main']);
+  } catch (err) {
+    console.warn('Rebase pull skipped or failed, continuing with push:', (err as Error).message);
   }
+  await run('git', ['push', 'origin', 'HEAD:main']);
 }

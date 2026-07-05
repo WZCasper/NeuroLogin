@@ -2,21 +2,36 @@ function adminApp() {
   const cfg = window.NEUROLOGIN_CONFIG;
 
   return {
+    cfg,
+    telegramUser: null,
+    loginCode: null,
+    loginDeepLink: '',
+    _pollTimer: null,
+
     tab: 'users',
+    allGroups: [],
     groups: [],
     selectedGroupId: null,
     users: [],
     survey: [],
     loading: false,
-    token: sessionStorage.getItem('neurologin_gh_token') || '',
+    ghToken: sessionStorage.getItem('neurologin_gh_token') || '',
     tokenInput: '',
     tokenModal: false,
-    editing: {}, // { [userId]: fieldKey }
+    editing: {},
     editBuffer: '',
     toast: '',
 
     init() {
-      this.loadGroups();
+      const stored = sessionStorage.getItem('neurologin_tg_user');
+      if (stored) {
+        try {
+          this.telegramUser = JSON.parse(stored);
+          this.loadGroups();
+        } catch (err) {
+          sessionStorage.removeItem('neurologin_tg_user');
+        }
+      }
     },
 
     showToast(msg) {
@@ -24,17 +39,65 @@ function adminApp() {
       setTimeout(() => (this.toast = ''), 2500);
     },
 
-    openTokenModal() {
-      this.tokenInput = '';
-      this.tokenModal = true;
+    // ---------------- Telegram login ----------------
+
+    randomCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let out = '';
+      for (let i = 0; i < 8; i++) {
+        out += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return out;
     },
 
-    saveToken() {
-      this.token = this.tokenInput.trim();
-      sessionStorage.setItem('neurologin_gh_token', this.token);
-      this.tokenModal = false;
-      this.showToast('Токен сохранён в этой вкладке');
+    startTelegramLogin() {
+      this.loginCode = this.randomCode();
+      this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${this.loginCode}`;
+      this._pollTimer = setInterval(() => this.pollLogin(), 3000);
     },
+
+    cancelLogin() {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+      this.loginCode = null;
+      this.loginDeepLink = '';
+    },
+
+    async pollLogin() {
+      if (!this.loginCode) return;
+      try {
+        const resp = await fetch(this.rawUrl('data/auth_sessions.json'));
+        if (!resp.ok) return;
+        const sessions = await resp.json();
+        const session = sessions[this.loginCode];
+        if (session) {
+          clearInterval(this._pollTimer);
+          this._pollTimer = null;
+          this.telegramUser = {
+            id: session.telegramUserId,
+            firstName: session.firstName,
+            username: session.username,
+          };
+          sessionStorage.setItem('neurologin_tg_user', JSON.stringify(this.telegramUser));
+          this.loginCode = null;
+          this.showToast('Вход выполнен');
+          await this.loadGroups();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    },
+
+    logout() {
+      sessionStorage.removeItem('neurologin_tg_user');
+      this.telegramUser = null;
+      this.groups = [];
+      this.allGroups = [];
+      this.users = [];
+      this.selectedGroupId = null;
+    },
+
+    // ---------------- Data loading ----------------
 
     rawUrl(relativePath) {
       return `https://raw.githubusercontent.com/${cfg.owner}/${cfg.repo}/${cfg.branch}/${relativePath}?t=${Date.now()}`;
@@ -52,14 +115,22 @@ function adminApp() {
     },
 
     async loadGroups() {
+      if (!this.telegramUser) return;
       this.loading = true;
       const groupsObj = await this.fetchJson('data/groups.json', {});
-      this.groups = Object.values(groupsObj).sort((a, b) => a.title.localeCompare(b.title));
-      if (this.groups.length && !this.selectedGroupId) {
+      this.allGroups = Object.values(groupsObj);
+      this.groups = this.allGroups
+        .filter((g) => g.addedByUserId === this.telegramUser.id)
+        .sort((a, b) => a.title.localeCompare(b.title));
+
+      if (this.groups.length && !this.groups.some((g) => g.chatId === this.selectedGroupId)) {
         this.selectedGroupId = this.groups[0].chatId;
       }
       if (this.selectedGroupId) {
         await this.loadGroupData();
+      } else {
+        this.users = [];
+        this.survey = [];
       }
       this.loading = false;
     },
@@ -94,9 +165,7 @@ function adminApp() {
       }
     },
 
-    async loadData() {
-      await this.loadGroups();
-    },
+    // ---------------- Users tab ----------------
 
     fieldValue(user, fieldName) {
       const entry = Object.values(user.answers || {}).find((a) => a.field === fieldName);
@@ -118,8 +187,8 @@ function adminApp() {
     },
 
     startEdit(user, key, currentValue) {
-      if (!this.token) {
-        this.showToast('Сначала введите токен доступа');
+      if (!this.ghToken) {
+        this.showToast('Нужен токен для сохранения правок');
         this.openTokenModal();
         return;
       }
@@ -141,6 +210,8 @@ function adminApp() {
         `Админ обновил данные пользователя ${user.userId} (группа ${this.selectedGroupId})`
       );
     },
+
+    // ---------------- Survey tab ----------------
 
     addStep() {
       this.survey.push({
@@ -178,12 +249,11 @@ function adminApp() {
     },
 
     async saveSurvey() {
-      if (!this.token) {
-        this.showToast('Сначала введите токен доступа');
+      if (!this.ghToken) {
+        this.showToast('Нужен токен для сохранения правок');
         this.openTokenModal();
         return;
       }
-      // Saved as a per-group override so different groups can run different surveys.
       await this.commitFile(
         `data/groups/${this.selectedGroupId}/survey.json`,
         JSON.stringify(this.survey, null, 2),
@@ -191,10 +261,24 @@ function adminApp() {
       );
     },
 
+    // ---------------- GitHub write token (separate from Telegram login) ----------------
+
+    openTokenModal() {
+      this.tokenInput = '';
+      this.tokenModal = true;
+    },
+
+    saveToken() {
+      this.ghToken = this.tokenInput.trim();
+      sessionStorage.setItem('neurologin_gh_token', this.ghToken);
+      this.tokenModal = false;
+      this.showToast('Токен сохранён в этой вкладке');
+    },
+
     async getFileSha(path) {
       const resp = await fetch(
         `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${cfg.branch}`,
-        { headers: { Authorization: `Bearer ${this.token}` } }
+        { headers: { Authorization: `Bearer ${this.ghToken}` } }
       );
       if (resp.status === 404) return null;
       if (!resp.ok) throw new Error(`GitHub API error: ${resp.status}`);
@@ -203,7 +287,7 @@ function adminApp() {
     },
 
     async commitFile(path, content, message) {
-      if (!this.token) {
+      if (!this.ghToken) {
         this.showToast('Нет токена доступа');
         return;
       }
@@ -221,7 +305,7 @@ function adminApp() {
           {
             method: 'PUT',
             headers: {
-              Authorization: `Bearer ${this.token}`,
+              Authorization: `Bearer ${this.ghToken}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),

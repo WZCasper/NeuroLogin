@@ -5,6 +5,10 @@
   box-shadow: none !important;
 }
 
+html, body {
+  overflow-x: hidden;
+}
+
 ::selection {
   background: #c9a92c;
   color: #0c0c0c;
@@ -19,6 +23,7 @@ input:focus, select:focus, textarea:focus {
 
 ::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: #0c0c0c;

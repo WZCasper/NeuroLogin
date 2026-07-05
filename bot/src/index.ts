@@ -10,6 +10,9 @@ import {
   saveMediaFile,
   registerGroup,
   getGroup,
+  loadAuthSessions,
+  saveAuthSessions,
+  pruneExpiredAuthSessions,
 } from './lib/storage';
 import { commitDataChanges } from './lib/git';
 import { logToGroup } from './lib/notify';
@@ -152,6 +155,32 @@ bot.start(async (ctx) => {
 
   // Private chat.
   const payload = ctx.startPayload;
+
+  // Web panel login: the site shows a one-time code and asks the admin to
+  // send it to the bot. Since Telegram already authenticated this DM, the
+  // bot can vouch for the user's identity without any extra backend.
+  if (payload && payload.startsWith('login_')) {
+    const code = payload.slice('login_'.length);
+    if (!/^[a-zA-Z0-9]{4,12}$/.test(code)) {
+      await ctx.reply('Некорректный код входа. Скопируйте код заново с сайта.');
+      return;
+    }
+
+    let sessions = loadAuthSessions();
+    sessions = pruneExpiredAuthSessions(sessions);
+    sessions[code] = {
+      telegramUserId: ctx.from.id,
+      username: ctx.from.username,
+      firstName: ctx.from.first_name,
+      createdAt: new Date().toISOString(),
+    };
+    saveAuthSessions(sessions);
+    await commitDataChanges(`Вход в панель управления: код ${code}`);
+
+    await ctx.reply('Вход подтверждён! Вернитесь на сайт — страница обновится автоматически.');
+    return;
+  }
+
   const groupChatId = payload ? Number(payload) : NaN;
 
   if (!payload || Number.isNaN(groupChatId) || !getGroup(groupChatId)) {

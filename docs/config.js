@@ -4,4 +4,5 @@ window.NEUROLOGIN_CONFIG = {
   owner: 'WZCasper',
   repo: 'NeuroLogin',
   branch: 'main',
+  botUsername: 'NeuroLoginBOT',
 };

@@ -56,3 +56,14 @@ export interface GroupRecord {
 export interface GroupsDb {
   [chatId: string]: GroupRecord;
 }
+
+export interface AuthSession {
+  telegramUserId: number;
+  username?: string;
+  firstName: string;
+  createdAt: string;
+}
+
+export interface AuthSessionsDb {
+  [code: string]: AuthSession;
+}

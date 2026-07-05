@@ -1,11 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import { SurveyStep, UsersDb, SessionsDb, GroupsDb, GroupRecord } from './types';
+import { SurveyStep, UsersDb, SessionsDb, GroupsDb, GroupRecord, AuthSessionsDb } from './types';
 
 const DATA_DIR = path.resolve(__dirname, '..', '..', '..', 'data');
 const GROUPS_DIR = path.join(DATA_DIR, 'groups');
 const GROUPS_FILE = path.join(DATA_DIR, 'groups.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const AUTH_SESSIONS_FILE = path.join(DATA_DIR, 'auth_sessions.json');
 const DEFAULT_SURVEY_FILE = path.resolve(__dirname, '..', 'config', 'survey.json');
 const DEFAULT_SURVEY_OVERRIDE_FILE = path.join(DATA_DIR, 'survey.json');
 
@@ -92,6 +93,30 @@ export function loadSessions(): SessionsDb {
 
 export function saveSessions(db: SessionsDb): void {
   writeJson(SESSIONS_FILE, db);
+}
+
+// ---------- Web login sessions (short-lived codes confirmed via the bot) ----------
+
+const AUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+export function loadAuthSessions(): AuthSessionsDb {
+  return readJson<AuthSessionsDb>(AUTH_SESSIONS_FILE, {});
+}
+
+export function saveAuthSessions(db: AuthSessionsDb): void {
+  writeJson(AUTH_SESSIONS_FILE, db);
+}
+
+/** Removes login codes older than the TTL so the file doesn't grow forever. */
+export function pruneExpiredAuthSessions(db: AuthSessionsDb): AuthSessionsDb {
+  const now = Date.now();
+  const result: AuthSessionsDb = {};
+  for (const [code, session] of Object.entries(db)) {
+    if (now - new Date(session.createdAt).getTime() < AUTH_SESSION_TTL_MS) {
+      result[code] = session;
+    }
+  }
+  return result;
 }
 
 // ---------- Survey configuration (global default, optional per-group override) ----------
