@@ -74,6 +74,10 @@
               <i class="fa-solid fa-circle-notch fa-spin"></i>
               <span>Ожидаю подтверждения...</span>
             </div>
+            <div x-show="lastCheckInfo" x-text="lastCheckInfo" class="text-xs text-textDim text-center border-t border-border pt-2"></div>
+            <button @click="pollLogin" class="text-xs border border-border px-3 py-1.5 hover:border-yellow transition-colors">
+              <i class="fa-solid fa-rotate mr-1.5"></i>Проверить сейчас
+            </button>
             <button @click="cancelLogin" class="text-xs text-textDim underline">Отменить</button>
           </div>
         </template>
