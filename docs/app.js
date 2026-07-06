@@ -23,29 +23,34 @@ function adminApp() {
     toast: '',
 
     init() {
-      const stored = sessionStorage.getItem('neurologin_tg_user');
-      if (stored) {
+      // Highest priority: a code embedded directly in the URL. This is how
+      // the bot's "Вернуться на сайт" button works — it opens a brand new
+      // page load with the code attached, so it doesn't depend on any
+      // storage or tab state surviving the trip to Telegram and back.
+      const urlCode = new URLSearchParams(window.location.search).get('code');
+
+      const stored = localStorage.getItem('neurologin_tg_user');
+      if (stored && !urlCode) {
         try {
           this.telegramUser = JSON.parse(stored);
           this.loadGroups();
           return;
         } catch (err) {
-          sessionStorage.removeItem('neurologin_tg_user');
+          localStorage.removeItem('neurologin_tg_user');
         }
       }
 
-      // Resume a login that was in progress if the tab was suspended or
-      // reloaded while the user was over in the Telegram app.
-      const pendingCode = sessionStorage.getItem('neurologin_pending_code');
+      const pendingCode = urlCode || localStorage.getItem('neurologin_pending_code');
       if (pendingCode) {
         this.loginCode = pendingCode;
         this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${pendingCode}`;
+        localStorage.setItem('neurologin_pending_code', pendingCode);
         this.pollLogin();
         this._pollTimer = setInterval(() => this.pollLogin(), 3000);
       }
 
-      // Also re-check whenever the tab becomes visible again (covers cases
-      // where the interval itself got throttled/paused by the OS/browser).
+      // Extra safety net in case the interval itself gets throttled by the
+      // OS/browser while the tab is in the background.
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && this.loginCode) {
           this.pollLogin();
@@ -72,7 +77,7 @@ function adminApp() {
     startTelegramLogin() {
       this.loginCode = this.randomCode();
       this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${this.loginCode}`;
-      sessionStorage.setItem('neurologin_pending_code', this.loginCode);
+      localStorage.setItem('neurologin_pending_code', this.loginCode);
       this.pollLogin();
       this._pollTimer = setInterval(() => this.pollLogin(), 3000);
     },
@@ -82,7 +87,16 @@ function adminApp() {
       this._pollTimer = null;
       this.loginCode = null;
       this.loginDeepLink = '';
-      sessionStorage.removeItem('neurologin_pending_code');
+      localStorage.removeItem('neurologin_pending_code');
+      this.clearCodeFromUrl();
+    },
+
+    clearCodeFromUrl() {
+      if (window.location.search.includes('code=')) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('code');
+        window.history.replaceState({}, '', url.pathname + url.hash);
+      }
     },
 
     async pollLogin() {
@@ -100,8 +114,9 @@ function adminApp() {
             firstName: session.firstName,
             username: session.username,
           };
-          sessionStorage.setItem('neurologin_tg_user', JSON.stringify(this.telegramUser));
-          sessionStorage.removeItem('neurologin_pending_code');
+          localStorage.setItem('neurologin_tg_user', JSON.stringify(this.telegramUser));
+          localStorage.removeItem('neurologin_pending_code');
+          this.clearCodeFromUrl();
           this.loginCode = null;
           this.showToast('Вход выполнен');
           await this.loadGroups();
@@ -112,7 +127,8 @@ function adminApp() {
     },
 
     logout() {
-      sessionStorage.removeItem('neurologin_tg_user');
+      localStorage.removeItem('neurologin_tg_user');
+      localStorage.removeItem('neurologin_pending_code');
       this.telegramUser = null;
       this.groups = [];
       this.allGroups = [];

@@ -27,6 +27,10 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 let botUsername = '';
 
+// Public URL of the admin panel (GitHub Pages). Used to build a
+// "Return to site" button after login is confirmed.
+const SITE_URL = process.env.SITE_URL || 'https://wzcasper.github.io/NeuroLogin/';
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -177,7 +181,12 @@ bot.start(async (ctx) => {
     saveAuthSessions(sessions);
     await commitDataChanges(`Вход в панель управления: код ${code}`);
 
-    await ctx.reply('Вход подтверждён! Вернитесь на сайт — страница обновится автоматически.');
+    await ctx.reply(
+      'Вход подтверждён! Нажмите кнопку ниже, чтобы вернуться на сайт — она сработает, даже если вкладка с сайтом уже закрылась.',
+      Markup.inlineKeyboard([
+        Markup.button.url('Вернуться на сайт', `${SITE_URL}?code=${code}`),
+      ])
+    );
     return;
   }
 
