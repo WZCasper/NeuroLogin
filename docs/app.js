@@ -6,7 +6,9 @@ function adminApp() {
     telegramUser: null,
     loginCode: null,
     loginDeepLink: '',
+    loginTimedOut: false,
     _pollTimer: null,
+    _pollAttempts: 0,
 
     tab: 'users',
     allGroups: [],
@@ -43,10 +45,12 @@ function adminApp() {
       const pendingCode = urlCode || localStorage.getItem('neurologin_pending_code');
       if (pendingCode) {
         this.loginCode = pendingCode;
+        this.loginTimedOut = false;
         this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${pendingCode}`;
+        this._pollAttempts = 0;
         localStorage.setItem('neurologin_pending_code', pendingCode);
         this.pollLogin();
-        this._pollTimer = setInterval(() => this.pollLogin(), 3000);
+        this._pollTimer = setInterval(() => this.pollLogin(), 4000);
       }
 
       // Extra safety net in case the interval itself gets throttled by the
@@ -77,9 +81,11 @@ function adminApp() {
     startTelegramLogin() {
       this.loginCode = this.randomCode();
       this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${this.loginCode}`;
+      this.loginTimedOut = false;
+      this._pollAttempts = 0;
       localStorage.setItem('neurologin_pending_code', this.loginCode);
       this.pollLogin();
-      this._pollTimer = setInterval(() => this.pollLogin(), 3000);
+      this._pollTimer = setInterval(() => this.pollLogin(), 4000);
     },
 
     cancelLogin() {
@@ -87,8 +93,14 @@ function adminApp() {
       this._pollTimer = null;
       this.loginCode = null;
       this.loginDeepLink = '';
+      this.loginTimedOut = false;
       localStorage.removeItem('neurologin_pending_code');
       this.clearCodeFromUrl();
+    },
+
+    retryLogin() {
+      this.cancelLogin();
+      this.startTelegramLogin();
     },
 
     clearCodeFromUrl() {
@@ -99,13 +111,39 @@ function adminApp() {
       }
     },
 
+    // Checks login status via two independent sources in parallel:
+    // - api.github.com always reflects the latest commit, but is capped at
+    //   60 requests/hour for anonymous callers (a shared limit that can be
+    //   affected by others behind the same carrier-grade NAT on mobile).
+    // - raw.githubusercontent.com has no such request cap, but caches file
+    //   contents at the CDN edge for up to 5 minutes and does not reliably
+    //   bust that cache via query strings.
+    // Neither is perfect alone; together they cover each other's weak spot.
     async pollLogin() {
       if (!this.loginCode) return;
-      try {
-        const resp = await fetch(this.rawUrl('data/auth_sessions.json'));
-        if (!resp.ok) return;
-        const sessions = await resp.json();
-        const session = sessions[this.loginCode];
+      this._pollAttempts += 1;
+      const MAX_ATTEMPTS = 45; // ~3 minutes at 4s intervals
+
+      const parseIfPossible = (text) => {
+        try {
+          return JSON.parse(text);
+        } catch (err) {
+          return null;
+        }
+      };
+
+      const results = await Promise.allSettled([
+        fetch(
+          `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/data/auth_sessions.json?ref=${cfg.branch}`,
+          { headers: { Accept: 'application/vnd.github.raw+json' } }
+        ).then((r) => (r.ok ? r.text() : null)),
+        fetch(this.rawUrl('data/auth_sessions.json')).then((r) => (r.ok ? r.text() : null)),
+      ]);
+
+      for (const result of results) {
+        if (result.status !== 'fulfilled' || !result.value) continue;
+        const sessions = parseIfPossible(result.value);
+        const session = sessions && sessions[this.loginCode];
         if (session) {
           clearInterval(this._pollTimer);
           this._pollTimer = null;
@@ -120,9 +158,17 @@ function adminApp() {
           this.loginCode = null;
           this.showToast('Вход выполнен');
           await this.loadGroups();
+          return;
         }
-      } catch (err) {
-        console.error(err);
+      }
+
+      if (this._pollAttempts >= MAX_ATTEMPTS) {
+        clearInterval(this._pollTimer);
+        this._pollTimer = null;
+        this.loginCode = null;
+        localStorage.removeItem('neurologin_pending_code');
+        this.clearCodeFromUrl();
+        this.loginTimedOut = true;
       }
     },
 

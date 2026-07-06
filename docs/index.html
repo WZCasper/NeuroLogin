@@ -46,7 +46,7 @@
           <h1 class="text-base sm:text-lg font-semibold">NeuroLogin</h1>
         </div>
 
-        <template x-if="!loginCode">
+        <template x-if="!loginCode && !loginTimedOut">
           <div>
             <p class="text-sm text-textDim mb-4">
               Вход только для администраторов, которые уже добавили бота в свою группу.
@@ -75,6 +75,18 @@
               <span>Ожидаю подтверждения...</span>
             </div>
             <button @click="cancelLogin" class="text-xs text-textDim underline">Отменить</button>
+          </div>
+        </template>
+
+        <template x-if="loginTimedOut">
+          <div class="flex flex-col gap-3">
+            <p class="text-sm text-textDim">
+              Не дождались подтверждения от Telegram. Попробуйте ещё раз —
+              обычно со второго раза срабатывает сразу.
+            </p>
+            <button @click="retryLogin" class="w-full border border-yellow text-yellow px-4 py-2.5 text-sm font-medium">
+              <i class="fa-solid fa-rotate-right mr-2"></i>Попробовать снова
+            </button>
           </div>
         </template>
       </div>
