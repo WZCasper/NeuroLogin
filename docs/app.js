@@ -28,10 +28,29 @@ function adminApp() {
         try {
           this.telegramUser = JSON.parse(stored);
           this.loadGroups();
+          return;
         } catch (err) {
           sessionStorage.removeItem('neurologin_tg_user');
         }
       }
+
+      // Resume a login that was in progress if the tab was suspended or
+      // reloaded while the user was over in the Telegram app.
+      const pendingCode = sessionStorage.getItem('neurologin_pending_code');
+      if (pendingCode) {
+        this.loginCode = pendingCode;
+        this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${pendingCode}`;
+        this.pollLogin();
+        this._pollTimer = setInterval(() => this.pollLogin(), 3000);
+      }
+
+      // Also re-check whenever the tab becomes visible again (covers cases
+      // where the interval itself got throttled/paused by the OS/browser).
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.loginCode) {
+          this.pollLogin();
+        }
+      });
     },
 
     showToast(msg) {
@@ -53,6 +72,8 @@ function adminApp() {
     startTelegramLogin() {
       this.loginCode = this.randomCode();
       this.loginDeepLink = `https://t.me/${cfg.botUsername}?start=login_${this.loginCode}`;
+      sessionStorage.setItem('neurologin_pending_code', this.loginCode);
+      this.pollLogin();
       this._pollTimer = setInterval(() => this.pollLogin(), 3000);
     },
 
@@ -61,6 +82,7 @@ function adminApp() {
       this._pollTimer = null;
       this.loginCode = null;
       this.loginDeepLink = '';
+      sessionStorage.removeItem('neurologin_pending_code');
     },
 
     async pollLogin() {
@@ -79,6 +101,7 @@ function adminApp() {
             username: session.username,
           };
           sessionStorage.setItem('neurologin_tg_user', JSON.stringify(this.telegramUser));
+          sessionStorage.removeItem('neurologin_pending_code');
           this.loginCode = null;
           this.showToast('Вход выполнен');
           await this.loadGroups();
