@@ -54,6 +54,9 @@
             <button @click="startTelegramLogin" class="w-full border border-yellow text-yellow px-4 py-2.5 text-sm font-medium">
               <i class="fa-brands fa-telegram mr-2"></i>Войти через Telegram
             </button>
+            <button @click="openOwnerTokenModal" class="w-full mt-3 border border-border text-textDim px-4 py-2 text-xs hover:border-yellow transition-colors">
+              <i class="fa-solid fa-key mr-2"></i>Войти по GitHub-токену
+            </button>
           </div>
         </template>
 
@@ -108,7 +111,12 @@
           <div class="min-w-0">
             <h1 class="text-sm sm:text-base font-semibold leading-tight truncate">NeuroLogin</h1>
             <p class="text-xs text-textDim truncate">
-              <span x-text="telegramUser.firstName"></span><span x-show="telegramUser.username"> · @<span x-text="telegramUser.username"></span></span>
+              <template x-if="!ownerMode">
+                <span><span x-text="telegramUser.firstName"></span><span x-show="telegramUser.username"> · @<span x-text="telegramUser.username"></span></span></span>
+              </template>
+              <template x-if="ownerMode">
+                <span>Режим владельца</span>
+              </template>
             </p>
           </div>
         </div>
@@ -279,6 +287,23 @@
       </main>
     </div>
   </template>
+
+  <!-- Owner token login modal -->
+  <div x-show="ownerTokenModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+    <div class="bg-panel border border-border p-5 sm:p-6 w-full max-w-md">
+      <h3 class="font-semibold mb-2">Вход по GitHub-токену</h3>
+      <p class="text-sm text-textDim mb-3">
+        Для владельца репозитория. Токен с правом Contents: Read and write
+        сразу даёт доступ ко всем группам и позволяет сохранять изменения —
+        без Telegram и без ожидания.
+      </p>
+      <input x-model="ownerTokenInput" type="password" placeholder="github_pat_..." class="w-full bg-panel2 border border-border px-3 py-2 text-text mb-3" />
+      <div class="flex justify-end gap-2">
+        <button @click="ownerTokenModal=false" class="border border-border px-3 py-1.5 text-sm">Отмена</button>
+        <button @click="loginWithOwnerToken" class="border border-yellow text-yellow px-3 py-1.5 text-sm">Войти</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Token modal (used for saving edits — separate from Telegram login) -->
   <div x-show="tokenModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">

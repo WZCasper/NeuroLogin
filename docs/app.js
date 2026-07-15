@@ -12,6 +12,9 @@ function adminApp() {
   return {
     cfg,
     telegramUser: null,
+    ownerMode: false,
+    ownerTokenModal: false,
+    ownerTokenInput: '',
     loginCode: null,
     loginDeepLink: '',
     loginTimedOut: false,
@@ -34,6 +37,17 @@ function adminApp() {
     toast: '',
 
     init() {
+      // Owner-token login: fully bypasses Telegram, no polling involved.
+      const storedOwner = localStorage.getItem('neurologin_owner_mode');
+      const storedOwnerToken = sessionStorage.getItem('neurologin_gh_token');
+      if (storedOwner === '1' && storedOwnerToken) {
+        this.ownerMode = true;
+        this.ghToken = storedOwnerToken;
+        this.telegramUser = { firstName: 'Владелец репозитория' };
+        this.loadGroups();
+        return;
+      }
+
       // Highest priority: a code embedded directly in the URL. This is how
       // the bot's "Вернуться на сайт" button works — it opens a brand new
       // page load with the code attached, so it doesn't depend on any
@@ -207,11 +221,34 @@ function adminApp() {
     logout() {
       localStorage.removeItem('neurologin_tg_user');
       localStorage.removeItem('neurologin_pending_code');
+      localStorage.removeItem('neurologin_owner_mode');
       this.telegramUser = null;
+      this.ownerMode = false;
       this.groups = [];
       this.allGroups = [];
       this.users = [];
       this.selectedGroupId = null;
+    },
+
+    openOwnerTokenModal() {
+      this.ownerTokenInput = '';
+      this.ownerTokenModal = true;
+    },
+
+    loginWithOwnerToken() {
+      const token = this.ownerTokenInput.trim();
+      if (!token) {
+        this.showToast('Введите токен');
+        return;
+      }
+      this.ghToken = token;
+      sessionStorage.setItem('neurologin_gh_token', token);
+      this.ownerMode = true;
+      localStorage.setItem('neurologin_owner_mode', '1');
+      this.telegramUser = { firstName: 'Владелец репозитория' };
+      this.ownerTokenModal = false;
+      this.showToast('Вход выполнен');
+      this.loadGroups();
     },
 
     // ---------------- Data loading ----------------
@@ -236,9 +273,11 @@ function adminApp() {
       this.loading = true;
       const groupsObj = await this.fetchJson('data/groups.json', {});
       this.allGroups = Object.values(groupsObj);
-      this.groups = this.allGroups
-        .filter((g) => g.addedByUserId === this.telegramUser.id)
-        .sort((a, b) => a.title.localeCompare(b.title));
+      this.groups = this.ownerMode
+        ? [...this.allGroups].sort((a, b) => a.title.localeCompare(b.title))
+        : this.allGroups
+            .filter((g) => g.addedByUserId === this.telegramUser.id)
+            .sort((a, b) => a.title.localeCompare(b.title));
 
       if (this.groups.length && !this.groups.some((g) => g.chatId === this.selectedGroupId)) {
         this.selectedGroupId = this.groups[0].chatId;
