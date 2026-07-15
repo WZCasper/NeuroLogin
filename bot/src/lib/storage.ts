@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { SurveyStep, UsersDb, SessionsDb, GroupsDb, GroupRecord, AuthSessionsDb } from './types';
+import { SurveyStep, UsersDb, SessionsDb, GroupsDb, GroupRecord, AuthSessionsDb, TriggerRule } from './types';
 
 const DATA_DIR = path.resolve(__dirname, '..', '..', '..', 'data');
 const GROUPS_DIR = path.join(DATA_DIR, 'groups');
@@ -43,6 +43,10 @@ function groupUsersFile(groupChatId: number): string {
 
 function groupSurveyFile(groupChatId: number): string {
   return path.join(groupDir(groupChatId), 'survey.json');
+}
+
+function groupTriggersFile(groupChatId: number): string {
+  return path.join(groupDir(groupChatId), 'triggers.json');
 }
 
 function groupMediaDir(groupChatId: number): string {
@@ -130,6 +134,12 @@ export function loadSurvey(groupChatId: number): SurveyStep[] {
     return readJson<SurveyStep[]>(DEFAULT_SURVEY_OVERRIDE_FILE, []);
   }
   return readJson<SurveyStep[]>(DEFAULT_SURVEY_FILE, []);
+}
+
+// ---------- Keyword triggers (per group, edited only from the admin panel) ----------
+
+export function loadTriggers(groupChatId: number): TriggerRule[] {
+  return readJson<TriggerRule[]>(groupTriggersFile(groupChatId), []);
 }
 
 // ---------- Media ----------

@@ -67,3 +67,13 @@ export interface AuthSession {
 export interface AuthSessionsDb {
   [code: string]: AuthSession;
 }
+
+export type TriggerMatchType = 'contains' | 'exact';
+
+export interface TriggerRule {
+  id: string;
+  keyword: string;
+  matchType: TriggerMatchType;
+  caseSensitive: boolean;
+  response: string;
+}

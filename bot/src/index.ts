@@ -13,10 +13,12 @@ import {
   loadAuthSessions,
   saveAuthSessions,
   pruneExpiredAuthSessions,
+  loadTriggers,
 } from './lib/storage';
 import { commitDataChanges } from './lib/git';
 import { logToGroup } from './lib/notify';
 import { getStep, getFirstStep, resolveNextStepId } from './lib/surveyEngine';
+import { substituteVariables } from './lib/variables';
 import { UserSession, UserRecord } from './lib/types';
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -310,7 +312,51 @@ bot.command('skip', async (ctx) => {
   await advance(ctx, session, '(пропущено)');
 });
 
+/**
+ * Matches an incoming group message against that group's keyword triggers
+ * and replies with the first match. {Field Name} placeholders in the
+ * response are filled in from the sender's own survey answers for this
+ * group, if they have completed it.
+ */
+async function handleGroupTriggers(ctx: Context, text: string): Promise<void> {
+  const chat = ctx.chat;
+  const sender = ctx.from;
+  if (!chat || !sender) return;
+  if (!getGroup(chat.id)) return; // ignore chats the bot isn't properly registered in
+
+  const triggers = loadTriggers(chat.id);
+  if (triggers.length === 0) return;
+
+  const haystackRaw = text;
+  const match = triggers.find((trigger) => {
+    if (!trigger.keyword) return false;
+    const haystack = trigger.caseSensitive ? haystackRaw : haystackRaw.toLowerCase();
+    const needle = trigger.caseSensitive ? trigger.keyword : trigger.keyword.toLowerCase();
+    return trigger.matchType === 'exact' ? haystack.trim() === needle.trim() : haystack.includes(needle);
+  });
+
+  if (!match) return;
+
+  const users = loadUsers(chat.id);
+  const senderRecord = users[String(sender.id)];
+  const responseText = substituteVariables(match.response, senderRecord?.answers);
+
+  if (responseText.trim()) {
+    await ctx.reply(responseText);
+  }
+}
+
 bot.on(message('text'), async (ctx) => {
+  // Group chats never run the survey — they get keyword-trigger matching
+  // instead. Handled inline (rather than as a second bot.on(message('text'))
+  // registration) because Telegraf runs same-type handlers as one chain:
+  // an earlier handler that returns without calling next() would silently
+  // block a later one from ever running for the same update type.
+  if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+    await handleGroupTriggers(ctx, ctx.message.text);
+    return;
+  }
+
   if (ctx.chat.type !== 'private') return;
   if (ctx.message.text.startsWith('/')) return; // let command handlers deal with it
 

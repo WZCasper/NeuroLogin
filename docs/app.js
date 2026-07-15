@@ -28,6 +28,7 @@ function adminApp() {
     selectedGroupId: null,
     users: [],
     survey: [],
+    triggers: [],
     loading: false,
     ghToken: sessionStorage.getItem('neurologin_gh_token') || '',
     tokenInput: '',
@@ -316,9 +317,47 @@ function adminApp() {
           survey = await this.fetchJson('data/survey.json', []);
         }
         this.survey = survey;
+
+        this.triggers = await this.fetchJson(
+          `data/groups/${this.selectedGroupId}/triggers.json`,
+          []
+        );
       } finally {
         this.loading = false;
       }
+    },
+
+    // ---------------- Triggers tab ----------------
+
+    get surveyFieldNames() {
+      return this.survey.map((step) => step.field).filter(Boolean);
+    },
+
+    addTrigger() {
+      this.triggers.push({
+        id: 'trigger_' + Math.random().toString(36).slice(2, 8),
+        keyword: '',
+        matchType: 'contains',
+        caseSensitive: false,
+        response: '',
+      });
+    },
+
+    removeTrigger(idx) {
+      this.triggers.splice(idx, 1);
+    },
+
+    async saveTriggers() {
+      if (!this.ghToken) {
+        this.showToast('Нужен токен для сохранения правок');
+        this.openTokenModal();
+        return;
+      }
+      await this.commitFile(
+        `data/groups/${this.selectedGroupId}/triggers.json`,
+        JSON.stringify(this.triggers, null, 2),
+        `Админ обновил триггеры для группы ${this.selectedGroupId}`
+      );
     },
 
     // ---------------- Users tab ----------------

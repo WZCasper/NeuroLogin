@@ -158,6 +158,9 @@
         <button @click="tab='survey'" :class="tab==='survey' ? 'border-b-2 border-yellow text-yellow' : 'text-textDim'" class="px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">
           <i class="fa-solid fa-list-check mr-1.5 sm:mr-2"></i>Опрос и ветвления
         </button>
+        <button @click="tab='triggers'" :class="tab==='triggers' ? 'border-b-2 border-yellow text-yellow' : 'text-textDim'" class="px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">
+          <i class="fa-solid fa-bolt mr-1.5 sm:mr-2"></i>Триггеры
+        </button>
       </nav>
 
       <main class="flex-1 px-4 sm:px-6 py-5 sm:py-6 max-w-6xl w-full mx-auto">
@@ -277,6 +280,61 @@
                 <div class="flex justify-end mt-3">
                   <button @click="removeStep(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
                     <i class="fa-solid fa-trash mr-1"></i>Удалить шаг
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- TRIGGERS TAB -->
+        <div x-show="tab==='triggers' && groups.length > 0">
+          <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <h2 class="text-sm sm:text-base font-semibold">Триггеры по ключевым словам</h2>
+            <div class="flex gap-2">
+              <button @click="addTrigger" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap">
+                <i class="fa-solid fa-plus mr-1.5"></i>Добавить триггер
+              </button>
+              <button @click="saveTriggers" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Сохранить
+              </button>
+            </div>
+          </div>
+
+          <p class="text-xs text-textDim mb-4">
+            Бот проверяет каждое сообщение в группе на совпадение с ключевым словом и отвечает заданным текстом.
+            <span x-show="surveyFieldNames.length">
+              Доступные переменные (подставится ответ участника из опроса):
+              <span class="text-text" x-text="surveyFieldNames.map(f => '{' + f + '}').join(', ')"></span>
+            </span>
+          </p>
+
+          <div x-show="triggers.length === 0" class="text-textDim text-sm mb-4">Триггеров пока нет.</div>
+
+          <div class="flex flex-col gap-3">
+            <template x-for="(trigger, idx) in triggers" :key="trigger.id">
+              <div class="border border-border bg-panel p-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label class="flex flex-col gap-1 text-xs text-textDim">Ключевое слово / фраза
+                    <input x-model="trigger.keyword" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="например: правила" />
+                  </label>
+                  <label class="flex flex-col gap-1 text-xs text-textDim">Тип совпадения
+                    <select x-model="trigger.matchType" class="bg-panel2 border border-border px-2 py-1.5 text-text">
+                      <option value="contains">Содержит слово где угодно в сообщении</option>
+                      <option value="exact">Сообщение целиком равно фразе</option>
+                    </select>
+                  </label>
+                  <label class="flex items-center gap-2 text-xs text-textDim md:col-span-2">
+                    <input type="checkbox" x-model="trigger.caseSensitive" class="accent-yellow" />
+                    Учитывать регистр букв
+                  </label>
+                  <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">Ответ бота
+                    <textarea x-model="trigger.response" rows="3" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="Привет, {Имя}! Вот правила группы..."></textarea>
+                  </label>
+                </div>
+                <div class="flex justify-end mt-3">
+                  <button @click="removeTrigger(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
+                    <i class="fa-solid fa-trash mr-1"></i>Удалить триггер
                   </button>
                 </div>
               </div>
