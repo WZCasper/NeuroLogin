@@ -258,6 +258,7 @@
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim">Поле (название данных)
                     <input x-model="step.field" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+                    <span class="text-yellow" x-show="step.field">Переменная для триггеров: <span x-text="'{' + step.field + '}'"></span></span>
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">Текст вопроса
                     <input x-model="step.question" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
@@ -310,6 +311,11 @@
           </p>
 
           <div x-show="triggers.length === 0" class="text-textDim text-sm mb-4">Триггеров пока нет.</div>
+          <div class="text-xs text-textDim mb-4 border-t border-border pt-2">
+            Диагностика: тип данных — <span x-text="Array.isArray(triggers) ? 'массив' : typeof triggers"></span>,
+            записей — <span x-text="triggers.length"></span>,
+            нажатий на «Добавить» — <span x-text="_addTriggerClicks"></span><span x-show="_addTriggerError">, ошибка: <span class="text-yellow" x-text="_addTriggerError"></span></span>
+          </div>
 
           <div class="flex flex-col gap-3">
             <template x-for="(trigger, idx) in triggers" :key="trigger.id">

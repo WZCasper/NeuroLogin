@@ -29,6 +29,8 @@ function adminApp() {
     users: [],
     survey: [],
     triggers: [],
+    _addTriggerClicks: 0,
+    _addTriggerError: '',
     loading: false,
     ghToken: sessionStorage.getItem('neurologin_gh_token') || '',
     tokenInput: '',
@@ -334,13 +336,24 @@ function adminApp() {
     },
 
     addTrigger() {
-      this.triggers.push({
-        id: 'trigger_' + Math.random().toString(36).slice(2, 8),
-        keyword: '',
-        matchType: 'contains',
-        caseSensitive: false,
-        response: '',
-      });
+      this._addTriggerClicks += 1;
+      this._addTriggerError = '';
+      try {
+        if (!Array.isArray(this.triggers)) {
+          this.triggers = [];
+        }
+        this.triggers.push({
+          id: 'trigger_' + Math.random().toString(36).slice(2, 8),
+          keyword: '',
+          matchType: 'contains',
+          caseSensitive: false,
+          response: '',
+        });
+        this.showToast('Триггер добавлен, заполните его ниже');
+      } catch (err) {
+        console.error(err);
+        this._addTriggerError = err && err.message ? err.message : String(err);
+      }
     },
 
     removeTrigger(idx) {
