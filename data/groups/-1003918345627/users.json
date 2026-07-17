@@ -1,0 +1,27 @@
+{
+  "5209485734": {
+    "userId": 5209485734,
+    "username": "WZ_Casper",
+    "groupChatId": -1003918345627,
+    "answers": {
+      "name": {
+        "field": "Имя",
+        "value": "Денис"
+      },
+      "activision": {
+        "field": "Activision ID",
+        "value": "亗 Casper#7378333"
+      },
+      "platform": {
+        "field": "Платформа",
+        "value": "🖥 Battle net"
+      },
+      "screenshot": {
+        "field": "Скриншот профиля",
+        "value": "(пропущено)"
+      }
+    },
+    "confirmedAt": "2026-07-17T08:40:03.336Z",
+    "updatedAt": "2026-07-17T08:40:03.336Z"
+  }
+}
