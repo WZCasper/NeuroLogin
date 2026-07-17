@@ -1,0 +1,9 @@
+[
+  {
+    "id": "trigger_fgouuo",
+    "keyword": "Ник",
+    "matchType": "contains",
+    "caseSensitive": false,
+    "response": "{Имя}\n{Activision ID}"
+  }
+]
