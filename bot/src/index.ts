@@ -46,7 +46,11 @@ interface PanelUser {
 // identity directly in the button's URL instead of relying on the client
 // to discover it.
 function panelKeyboard(user: PanelUser) {
-  const params = new URLSearchParams({ uid: String(user.id), name: user.first_name || '' });
+  const params = new URLSearchParams({
+    uid: String(user.id),
+    name: user.first_name || '',
+    t: String(Date.now()), // cache-buster in case Pages/WebView caches by exact URL
+  });
   if (user.username) params.set('username', user.username);
   const url = `${SITE_URL}?${params.toString()}`;
   return Markup.keyboard([Markup.button.webApp('🎛 Открыть панель', url)]).resize();

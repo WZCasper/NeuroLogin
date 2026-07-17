@@ -14,6 +14,7 @@ function adminApp() {
     isInTelegram: false,
     telegramUser: null,
     pendingSaveNotice: true,
+    debugInfo: '',
 
     tab: 'users',
     allGroups: [],
@@ -42,6 +43,15 @@ function adminApp() {
       // instead, since it already knows exactly who it's replying to.
       const params = new URLSearchParams(window.location.search);
       const uid = params.get('uid');
+
+      this.debugInfo = JSON.stringify({
+        href: window.location.href,
+        search: window.location.search,
+        uid: uid,
+        hasTelegramObject: !!tg,
+        hasSendData: !!(tg && typeof tg.sendData === 'function'),
+      });
+
       if (!uid || Number.isNaN(Number(uid))) {
         this.isInTelegram = false;
         return;
