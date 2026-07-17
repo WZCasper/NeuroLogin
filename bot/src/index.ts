@@ -29,16 +29,32 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 let botUsername = '';
 
-// Public URL of the admin panel (GitHub Pages). Used to build a
-// "Return to site" button after login is confirmed.
+// Public URL of the admin panel (GitHub Pages).
 const SITE_URL = process.env.SITE_URL || 'https://wzcasper.github.io/NeuroLogin/';
 
-function panelKeyboard() {
-  return Markup.keyboard([Markup.button.webApp('🎛 Открыть панель', SITE_URL)]).resize();
+interface PanelUser {
+  id: number;
+  first_name: string;
+  username?: string;
+}
+
+// Mini Apps launched from a keyboard button (required for sendData, see the
+// web_app_data handler below) do NOT get Telegram.WebApp.initDataUnsafe
+// populated on the client side — initData and sendData are mutually
+// exclusive per Telegram's own docs. Since the bot already knows exactly
+// who it's replying to (a normal authenticated update), it embeds that
+// identity directly in the button's URL instead of relying on the client
+// to discover it.
+function panelKeyboard(user: PanelUser) {
+  const params = new URLSearchParams({ uid: String(user.id), name: user.first_name || '' });
+  if (user.username) params.set('username', user.username);
+  const url = `${SITE_URL}?${params.toString()}`;
+  return Markup.keyboard([Markup.button.webApp('🎛 Открыть панель', url)]).resize();
 }
 
 async function sendPanelButton(ctx: Context, text: string): Promise<void> {
-  await ctx.reply(text, panelKeyboard());
+  if (!ctx.from) return;
+  await ctx.reply(text, panelKeyboard(ctx.from));
 }
 
 function isGroupAdminSomewhere(userId: number): boolean {
@@ -119,7 +135,7 @@ bot.on('my_chat_member', async (ctx) => {
       await ctx.telegram.sendMessage(
         adder.id,
         `Группа «${chat.title}» подключена. Открывайте панель управления кнопкой ниже в любой момент — она покажет только ваши группы.`,
-        panelKeyboard()
+        panelKeyboard(adder)
       );
     } catch (err) {
       // The admin may not have started a private chat with the bot yet —

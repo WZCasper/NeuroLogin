@@ -30,15 +30,29 @@ function adminApp() {
 
     init() {
       const tg = window.Telegram && window.Telegram.WebApp;
-      const user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
-      if (!tg || !user) {
+      if (tg) {
+        tg.ready();
+        tg.expand();
+      }
+
+      // Keyboard-button-launched Mini Apps (required for sendData, see
+      // sendToBotAndClose below) don't get Telegram.WebApp.initDataUnsafe
+      // populated — Telegram treats initData and sendData as mutually
+      // exclusive. The bot embeds the real identity in the button's URL
+      // instead, since it already knows exactly who it's replying to.
+      const params = new URLSearchParams(window.location.search);
+      const uid = params.get('uid');
+      if (!uid || Number.isNaN(Number(uid))) {
         this.isInTelegram = false;
         return;
       }
-      tg.ready();
-      tg.expand();
+
       this.isInTelegram = true;
-      this.telegramUser = { id: user.id, firstName: user.first_name, username: user.username };
+      this.telegramUser = {
+        id: Number(uid),
+        firstName: params.get('name') || 'Админ',
+        username: params.get('username') || undefined,
+      };
       this.loadGroups();
     },
 
