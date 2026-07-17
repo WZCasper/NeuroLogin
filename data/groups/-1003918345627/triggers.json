@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": "trigger_95u408",
+    "keyword": "Ник",
+    "matchType": "contains",
+    "caseSensitive": false,
+    "response": "Работает!\n{Имя}\n{Activision ID}"
+  }
+]
