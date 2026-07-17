@@ -4,6 +4,6 @@
     "keyword": "Ник",
     "matchType": "contains",
     "caseSensitive": false,
-    "response": "Работает!\n{Имя}\n{Activision ID}"
+    "response": "{Имя}\n{Activision ID}"
   }
 ]
