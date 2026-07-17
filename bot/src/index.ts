@@ -7,19 +7,19 @@ import {
   loadSessions,
   saveSessions,
   loadSurvey,
+  saveSurveyOverride,
   saveMediaFile,
   registerGroup,
   getGroup,
-  loadAuthSessions,
-  saveAuthSessions,
-  pruneExpiredAuthSessions,
+  loadGroups,
   loadTriggers,
+  saveTriggers,
 } from './lib/storage';
 import { commitDataChanges } from './lib/git';
 import { logToGroup } from './lib/notify';
 import { getStep, getFirstStep, resolveNextStepId } from './lib/surveyEngine';
 import { substituteVariables } from './lib/variables';
-import { UserSession, UserRecord } from './lib/types';
+import { UserSession, UserRecord, UsersDb, SurveyStep, TriggerRule } from './lib/types';
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -32,6 +32,19 @@ let botUsername = '';
 // Public URL of the admin panel (GitHub Pages). Used to build a
 // "Return to site" button after login is confirmed.
 const SITE_URL = process.env.SITE_URL || 'https://wzcasper.github.io/NeuroLogin/';
+
+function panelKeyboard() {
+  return Markup.keyboard([Markup.button.webApp('🎛 Открыть панель', SITE_URL)]).resize();
+}
+
+async function sendPanelButton(ctx: Context, text: string): Promise<void> {
+  await ctx.reply(text, panelKeyboard());
+}
+
+function isGroupAdminSomewhere(userId: number): boolean {
+  const groups = loadGroups();
+  return Object.values(groups).some((g) => g.addedByUserId === userId);
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -101,6 +114,19 @@ bot.on('my_chat_member', async (ctx) => {
       'Бот подключён. Новые участники смогут пройти короткий опрос в личных сообщениях со мной, либо запустите его командой /start прямо здесь.' +
         note
     );
+
+    try {
+      await ctx.telegram.sendMessage(
+        adder.id,
+        `Группа «${chat.title}» подключена. Открывайте панель управления кнопкой ниже в любой момент — она покажет только ваши группы.`,
+        panelKeyboard()
+      );
+    } catch (err) {
+      // The admin may not have started a private chat with the bot yet —
+      // Telegram doesn't allow bots to DM first in that case. Not fatal:
+      // they can still get the button via /start or /panel later.
+      console.warn(`Could not DM admin ${adder.id} with the panel button:`, err);
+    }
   } catch (err) {
     console.error('Failed to process my_chat_member update:', err);
     // Last-resort message so the group is never left without any feedback.
@@ -161,43 +187,16 @@ bot.start(async (ctx) => {
 
   // Private chat.
   const payload = ctx.startPayload;
-
-  // Web panel login: the site shows a one-time code and asks the admin to
-  // send it to the bot. Since Telegram already authenticated this DM, the
-  // bot can vouch for the user's identity without any extra backend.
-  if (payload && payload.startsWith('login_')) {
-    const code = payload.slice('login_'.length);
-    if (!/^[a-zA-Z0-9]{4,12}$/.test(code)) {
-      await ctx.reply('Некорректный код входа. Скопируйте код заново с сайта.');
-      return;
-    }
-
-    let sessions = loadAuthSessions();
-    sessions = pruneExpiredAuthSessions(sessions);
-    sessions[code] = {
-      telegramUserId: ctx.from.id,
-      username: ctx.from.username,
-      firstName: ctx.from.first_name,
-      createdAt: new Date().toISOString(),
-    };
-    saveAuthSessions(sessions);
-    await commitDataChanges(`Вход в панель управления: код ${code}`);
-
-    await ctx.reply(
-      'Вход подтверждён! Нажмите кнопку ниже, чтобы вернуться на сайт — она сработает, даже если вкладка с сайтом уже закрылась.',
-      Markup.inlineKeyboard([
-        Markup.button.url('Вернуться на сайт', `${SITE_URL}?code=${code}`),
-      ])
-    );
-    return;
-  }
-
   const groupChatId = payload ? Number(payload) : NaN;
 
   if (!payload || Number.isNaN(groupChatId) || !getGroup(groupChatId)) {
-    await ctx.reply(
-      'Чтобы пройти опрос, открой этого бота по ссылке из своей группы (команда /start в группе покажет кнопку).'
-    );
+    if (isGroupAdminSomewhere(ctx.from.id)) {
+      await sendPanelButton(ctx, 'С возвращением! Нажмите кнопку ниже, чтобы открыть панель управления.');
+    } else {
+      await ctx.reply(
+        'Чтобы пройти опрос, открой этого бота по ссылке из своей группы (команда /start в группе покажет кнопку).'
+      );
+    }
     return;
   }
 
@@ -293,6 +292,11 @@ async function finalizeSurvey(ctx: Context, session: UserSession): Promise<void>
 
   await ctx.reply('Спасибо! Данные сохранены.');
 }
+
+bot.command('panel', async (ctx) => {
+  if (ctx.chat.type !== 'private') return;
+  await sendPanelButton(ctx, 'Панель управления вашими группами:');
+});
 
 bot.command('skip', async (ctx) => {
   if (ctx.chat.type !== 'private') return;
@@ -500,6 +504,60 @@ bot.action('confirm_no', async (ctx) => {
 
   await ctx.reply('Хорошо, начнём заново.');
   await askStep(ctx, session.groupChatId, session.currentStepId);
+});
+
+// ---------------------------------------------------------------------------
+// Mini App saves: the panel calls Telegram.WebApp.sendData(...), which
+// Telegram delivers here as a normal, already-authenticated message — no
+// GitHub token or separate login needed. ctx.from.id is exactly as trusted
+// as in any other update, so it's checked directly against the group's
+// registered admin.
+// ---------------------------------------------------------------------------
+
+interface PanelSavePayload {
+  action: 'save_triggers' | 'save_survey' | 'save_users';
+  groupChatId: number;
+  payload: unknown;
+}
+
+bot.on(message('web_app_data'), async (ctx) => {
+  if (ctx.chat.type !== 'private') return;
+
+  let data: PanelSavePayload;
+  try {
+    data = JSON.parse(ctx.message.web_app_data.data);
+  } catch (err) {
+    await ctx.reply('Не удалось прочитать данные из панели. Попробуйте ещё раз.');
+    return;
+  }
+
+  const group = getGroup(data.groupChatId);
+  if (!group || group.addedByUserId !== ctx.from.id) {
+    await ctx.reply('У вас нет прав на изменение этой группы.');
+    return;
+  }
+
+  switch (data.action) {
+    case 'save_triggers':
+      saveTriggers(data.groupChatId, data.payload as TriggerRule[]);
+      break;
+    case 'save_survey':
+      saveSurveyOverride(data.groupChatId, data.payload as SurveyStep[]);
+      break;
+    case 'save_users':
+      saveUsers(data.groupChatId, data.payload as UsersDb);
+      break;
+    default:
+      await ctx.reply('Неизвестное действие от панели.');
+      return;
+  }
+
+  await commitDataChanges(`Панель: ${data.action} для группы ${data.groupChatId} (админ ${ctx.from.id})`);
+
+  await sendPanelButton(
+    ctx,
+    '✅ Сохранено. Панель закрылась — при необходимости откройте её заново этой же кнопкой.'
+  );
 });
 
 bot.catch((err, ctx) => {

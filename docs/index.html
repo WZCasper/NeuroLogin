@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
@@ -37,96 +38,38 @@
 
 <div x-data="adminApp()" x-init="init()" class="min-h-screen flex flex-col">
 
-  <!-- ======================= LOGIN SCREEN ======================= -->
-  <template x-if="!telegramUser">
+  <!-- ======================= NOT OPENED VIA TELEGRAM ======================= -->
+  <template x-if="!isInTelegram">
     <div class="flex-1 flex items-center justify-center px-4 py-10">
-      <div class="w-full max-w-sm border border-border bg-panel p-5 sm:p-6">
-        <div class="flex items-center gap-2 mb-4">
-          <div class="w-8 h-8 border border-yellow flex items-center justify-center text-yellow font-bold shrink-0">N</div>
-          <h1 class="text-base sm:text-lg font-semibold">NeuroLogin</h1>
-        </div>
-
-        <template x-if="!loginCode && !loginTimedOut">
-          <div>
-            <p class="text-sm text-textDim mb-4">
-              Вход только для администраторов, которые уже добавили бота в свою группу.
-            </p>
-            <button @click="startTelegramLogin" class="w-full border border-yellow text-yellow px-4 py-2.5 text-sm font-medium">
-              <i class="fa-brands fa-telegram mr-2"></i>Войти через Telegram
-            </button>
-            <button @click="openOwnerTokenModal" class="w-full mt-3 border border-border text-textDim px-4 py-2 text-xs hover:border-yellow transition-colors">
-              <i class="fa-solid fa-key mr-2"></i>Войти по GitHub-токену
-            </button>
-          </div>
-        </template>
-
-        <template x-if="loginCode">
-          <div class="flex flex-col gap-3">
-            <p class="text-sm text-textDim">
-              1. Нажмите кнопку ниже — откроется Telegram.<br>
-              2. Нажмите «Отправить» в диалоге с ботом.<br>
-              3. В Telegram нажмите кнопку «Вернуться на сайт».
-            </p>
-            <a :href="loginDeepLink" target="_blank" class="w-full text-center border border-yellow text-yellow px-4 py-2.5 text-sm font-medium">
-              <i class="fa-brands fa-telegram mr-2"></i>Открыть Telegram
-            </a>
-            <div class="text-xs text-textDim text-center">
-              Код: <span class="text-text tracking-widest" x-text="loginCode"></span>
-            </div>
-            <div class="flex items-center justify-center gap-2 text-xs text-textDim py-1">
-              <i class="fa-solid fa-circle-notch fa-spin"></i>
-              <span>Ожидаю подтверждения...</span>
-            </div>
-            <div x-show="lastCheckInfo" x-text="lastCheckInfo" class="text-xs text-textDim text-center border-t border-border pt-2"></div>
-            <button @click="pollLogin" class="text-xs border border-border px-3 py-1.5 hover:border-yellow transition-colors">
-              <i class="fa-solid fa-rotate mr-1.5"></i>Проверить сейчас
-            </button>
-            <button @click="cancelLogin" class="text-xs text-textDim underline">Отменить</button>
-          </div>
-        </template>
-
-        <template x-if="loginTimedOut">
-          <div class="flex flex-col gap-3">
-            <p class="text-sm text-textDim">
-              Не дождались подтверждения от Telegram. Попробуйте ещё раз —
-              обычно со второго раза срабатывает сразу.
-            </p>
-            <button @click="retryLogin" class="w-full border border-yellow text-yellow px-4 py-2.5 text-sm font-medium">
-              <i class="fa-solid fa-rotate-right mr-2"></i>Попробовать снова
-            </button>
-          </div>
-        </template>
+      <div class="w-full max-w-sm border border-border bg-panel p-5 sm:p-6 text-center">
+        <div class="w-8 h-8 border border-yellow flex items-center justify-center text-yellow font-bold mx-auto mb-4">N</div>
+        <p class="text-sm text-textDim mb-4">
+          Эта панель открывается изнутри Telegram — так бот сразу знает, кто вы,
+          и может сохранять изменения без паролей и токенов.
+        </p>
+        <a :href="'https://t.me/' + cfg.botUsername" class="inline-block w-full border border-yellow text-yellow px-4 py-2.5 text-sm font-medium">
+          <i class="fa-brands fa-telegram mr-2"></i>Открыть бота в Telegram
+        </a>
+        <p class="text-xs text-textDim mt-3">
+          В чате с ботом нажмите кнопку «🎛 Открыть панель» под полем ввода
+          (или отправьте команду /panel).
+        </p>
       </div>
     </div>
   </template>
 
-  <!-- ======================= MAIN APP (after login) ======================= -->
-  <template x-if="telegramUser">
+  <!-- ======================= MAIN APP ======================= -->
+  <template x-if="isInTelegram">
     <div class="flex-1 flex flex-col">
 
       <!-- Header -->
-      <header class="border-b border-border bg-panel px-4 sm:px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-2 min-w-0">
-          <div class="w-8 h-8 border border-yellow flex items-center justify-center text-yellow font-bold shrink-0">N</div>
-          <div class="min-w-0">
-            <h1 class="text-sm sm:text-base font-semibold leading-tight truncate">NeuroLogin</h1>
-            <p class="text-xs text-textDim truncate">
-              <template x-if="!ownerMode">
-                <span><span x-text="telegramUser.firstName"></span><span x-show="telegramUser.username"> · @<span x-text="telegramUser.username"></span></span></span>
-              </template>
-              <template x-if="ownerMode">
-                <span>Режим владельца</span>
-              </template>
-            </p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <button @click="openTokenModal" class="border border-border px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap hover:border-yellow transition-colors">
-            <i class="fa-solid fa-key mr-1.5 text-yellow"></i><span x-text="ghToken ? 'Токен сохранён' : 'Токен для правок'"></span>
-          </button>
-          <button @click="logout" class="border border-border px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap hover:border-yellow transition-colors">
-            <i class="fa-solid fa-right-from-bracket"></i>
-          </button>
+      <header class="border-b border-border bg-panel px-4 sm:px-6 py-3 flex items-center gap-2">
+        <div class="w-8 h-8 border border-yellow flex items-center justify-center text-yellow font-bold shrink-0">N</div>
+        <div class="min-w-0">
+          <h1 class="text-sm sm:text-base font-semibold leading-tight truncate">NeuroLogin</h1>
+          <p class="text-xs text-textDim truncate">
+            <span x-text="telegramUser.firstName"></span><span x-show="telegramUser.username"> · @<span x-text="telegramUser.username"></span></span>
+          </p>
         </div>
       </header>
 
@@ -169,17 +112,26 @@
           <p class="mb-2">Групп пока нет. Чтобы начать:</p>
           <ol class="list-decimal list-inside flex flex-col gap-1">
             <li>Добавьте бота <span class="text-text">@<span x-text="cfg.botUsername"></span></span> в свою группу (сделайте это сами, как администратор).</li>
-            <li>Обновите эту страницу.</li>
+            <li>Закройте и снова откройте эту панель кнопкой в чате с ботом.</li>
           </ol>
+        </div>
+
+        <div x-show="pendingSaveNotice" class="border border-yellow text-yellow bg-panel p-3 text-xs mb-4">
+          Сохранение закроет эту панель — так работает Telegram. Бот пришлёт кнопку, чтобы открыть её снова.
         </div>
 
         <!-- USERS TAB -->
         <div x-show="tab==='users' && groups.length > 0">
-          <div class="flex items-center justify-between mb-4 gap-2">
+          <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <h2 class="text-sm sm:text-base font-semibold">Участники (<span x-text="users.length"></span>)</h2>
-            <button @click="loadGroups" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap">
-              <i class="fa-solid fa-rotate mr-1.5"></i>Обновить
-            </button>
+            <div class="flex gap-2">
+              <button @click="loadGroupData" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap">
+                <i class="fa-solid fa-rotate mr-1.5"></i>Обновить
+              </button>
+              <button x-show="usersDirty" @click="saveUsers" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Сохранить правки
+              </button>
+            </div>
           </div>
 
           <div x-show="loading" class="text-textDim text-sm">Загрузка данных...</div>
@@ -210,7 +162,7 @@
                         x-show="editing[u.userId] === key"
                         x-model="editBuffer"
                         class="bg-panel2 border border-yellowDim px-2 py-0.5 text-right text-text w-1/2"
-                        @keydown.enter="saveField(u, key)"
+                        @keydown.enter="commitFieldEdit(u, key)"
                       />
                     </div>
                   </template>
@@ -226,8 +178,8 @@
                       <i class="fa-solid fa-pen mr-1"></i><span x-text="'Изм. ' + a.field"></span>
                     </button>
                   </template>
-                  <button x-show="editing[u.userId]" @click="saveField(u, editing[u.userId])" class="text-xs border border-yellow text-yellow px-2 py-1">
-                    <i class="fa-solid fa-check mr-1"></i>Сохранить
+                  <button x-show="editing[u.userId]" @click="commitFieldEdit(u, editing[u.userId])" class="text-xs border border-yellow text-yellow px-2 py-1">
+                    <i class="fa-solid fa-check mr-1"></i>Готово
                   </button>
                 </div>
               </div>
@@ -305,17 +257,11 @@
           <p class="text-xs text-textDim mb-4">
             Бот проверяет каждое сообщение в группе на совпадение с ключевым словом и отвечает заданным текстом.
             <span x-show="surveyFieldNames.length">
-              Доступные переменные (подставится ответ участника из опроса):
-              <span class="text-text" x-text="surveyFieldNames.map(f => '{' + f + '}').join(', ')"></span>
+              Доступные переменные: <span class="text-text" x-text="surveyFieldNames.map(f => '{' + f + '}').join(', ')"></span>
             </span>
           </p>
 
           <div x-show="triggers.length === 0" class="text-textDim text-sm mb-4">Триггеров пока нет.</div>
-          <div class="text-xs text-textDim mb-4 border-t border-border pt-2">
-            Диагностика: тип данных — <span x-text="Array.isArray(triggers) ? 'массив' : typeof triggers"></span>,
-            записей — <span x-text="triggers.length"></span>,
-            нажатий на «Добавить» — <span x-text="_addTriggerClicks"></span><span x-show="_addTriggerError">, ошибка: <span class="text-yellow" x-text="_addTriggerError"></span></span>
-          </div>
 
           <div class="flex flex-col gap-3">
             <template x-for="(trigger, idx) in triggers" :key="trigger.id">
@@ -351,38 +297,6 @@
       </main>
     </div>
   </template>
-
-  <!-- Owner token login modal -->
-  <div x-show="ownerTokenModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
-    <div class="bg-panel border border-border p-5 sm:p-6 w-full max-w-md">
-      <h3 class="font-semibold mb-2">Вход по GitHub-токену</h3>
-      <p class="text-sm text-textDim mb-3">
-        Для владельца репозитория. Токен с правом Contents: Read and write
-        сразу даёт доступ ко всем группам и позволяет сохранять изменения —
-        без Telegram и без ожидания.
-      </p>
-      <input x-model="ownerTokenInput" type="password" placeholder="github_pat_..." class="w-full bg-panel2 border border-border px-3 py-2 text-text mb-3" />
-      <div class="flex justify-end gap-2">
-        <button @click="ownerTokenModal=false" class="border border-border px-3 py-1.5 text-sm">Отмена</button>
-        <button @click="loginWithOwnerToken" class="border border-yellow text-yellow px-3 py-1.5 text-sm">Войти</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Token modal (used for saving edits — separate from Telegram login) -->
-  <div x-show="tokenModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
-    <div class="bg-panel border border-border p-5 sm:p-6 w-full max-w-md">
-      <h3 class="font-semibold mb-2">Токен для сохранения изменений</h3>
-      <p class="text-sm text-textDim mb-3">
-        Вход через Telegram нужен, чтобы показать ваши группы и участников. А чтобы что-то <b>изменить</b> (правки анкет, конструктор опроса), дополнительно нужен GitHub-токен с правом записи. Он хранится только в этой вкладке браузера.
-      </p>
-      <input x-model="tokenInput" type="password" placeholder="github_pat_..." class="w-full bg-panel2 border border-border px-3 py-2 text-text mb-3" />
-      <div class="flex justify-end gap-2">
-        <button @click="tokenModal=false" class="border border-border px-3 py-1.5 text-sm">Отмена</button>
-        <button @click="saveToken" class="border border-yellow text-yellow px-3 py-1.5 text-sm">Сохранить</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Toast -->
   <div x-show="toast" x-cloak x-text="toast" class="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto bg-panel border border-yellow px-4 py-2 text-sm text-center sm:text-left"></div>
