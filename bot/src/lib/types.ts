@@ -51,10 +51,23 @@ export interface GroupRecord {
   addedByUserId: number;
   addedByUsername?: string;
   addedAt: string;
+  baseId?: string;
 }
 
 export interface GroupsDb {
   [chatId: string]: GroupRecord;
+}
+
+export interface BaseRecord {
+  id: string;
+  name: string;
+  ownerUserId: number;
+  ownerUsername?: string;
+  createdAt: string;
+}
+
+export interface BasesDb {
+  [id: string]: BaseRecord;
 }
 
 export type TriggerMatchType = 'contains' | 'exact';

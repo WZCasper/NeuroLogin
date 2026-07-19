@@ -29,6 +29,14 @@ function adminApp() {
     editBuffer: '',
     toast: '',
 
+    allBases: [],
+    currentBaseId: null,
+    currentBaseName: '',
+    isBaseOwner: true,
+    createBaseModal: false,
+    attachBaseModal: false,
+    newBaseName: '',
+
     init() {
       const tg = window.Telegram && window.Telegram.WebApp;
       if (tg) {
@@ -118,28 +126,36 @@ function adminApp() {
       if (!this.selectedGroupId) return;
       this.loading = true;
       try {
-        const usersObj = await this.fetchJson(
-          `data/groups/${this.selectedGroupId}/users.json`,
-          {}
-        );
+        const groupRecord = this.allGroups.find((g) => g.chatId === this.selectedGroupId);
+        this.currentBaseId = (groupRecord && groupRecord.baseId) || null;
+
+        if (this.currentBaseId) {
+          const basesObj = await this.fetchJson('data/bases.json', {});
+          const base = basesObj[this.currentBaseId];
+          this.currentBaseName = base ? base.name : '(база не найдена)';
+          this.isBaseOwner = !!base && base.ownerUserId === this.telegramUser.id;
+        } else {
+          this.currentBaseName = '';
+          this.isBaseOwner = true;
+        }
+
+        const dataRoot = this.currentBaseId
+          ? `data/bases/${this.currentBaseId}`
+          : `data/groups/${this.selectedGroupId}`;
+
+        const usersObj = await this.fetchJson(`${dataRoot}/users.json`, {});
         this.users = Object.values(usersObj).sort((a, b) =>
           (b.confirmedAt || '').localeCompare(a.confirmedAt || '')
         );
         this.usersDirty = false;
 
-        let survey = await this.fetchJson(
-          `data/groups/${this.selectedGroupId}/survey.json`,
-          null
-        );
+        let survey = await this.fetchJson(`${dataRoot}/survey.json`, null);
         if (!survey) {
           survey = await this.fetchJson('data/survey.json', []);
         }
         this.survey = survey;
 
-        this.triggers = await this.fetchJson(
-          `data/groups/${this.selectedGroupId}/triggers.json`,
-          []
-        );
+        this.triggers = await this.fetchJson(`${dataRoot}/triggers.json`, []);
       } finally {
         this.loading = false;
       }
@@ -167,6 +183,10 @@ function adminApp() {
     },
 
     startEdit(user, key, currentValue) {
+      if (!this.isBaseOwner) {
+        this.showToast('Общую базу может редактировать только её владелец');
+        return;
+      }
       this.editing[user.userId] = key;
       this.editBuffer = currentValue;
     },
@@ -247,6 +267,38 @@ function adminApp() {
 
     saveTriggers() {
       this.sendToBotAndClose('save_triggers', this.triggers);
+    },
+
+    // ---------------- Shared bases ----------------
+
+    openCreateBaseModal() {
+      this.newBaseName = '';
+      this.createBaseModal = true;
+    },
+
+    confirmCreateBase() {
+      const name = this.newBaseName.trim();
+      if (!name) {
+        this.showToast('Введите название базы');
+        return;
+      }
+      this.createBaseModal = false;
+      this.sendToBotAndClose('create_base', { name });
+    },
+
+    async openAttachBaseModal() {
+      const basesObj = await this.fetchJson('data/bases.json', {});
+      this.allBases = Object.values(basesObj).sort((a, b) => a.name.localeCompare(b.name));
+      this.attachBaseModal = true;
+    },
+
+    confirmAttachBase(baseId) {
+      this.attachBaseModal = false;
+      this.sendToBotAndClose('attach_base', { baseId });
+    },
+
+    doDetachBase() {
+      this.sendToBotAndClose('detach_base', {});
     },
 
     // ---------------- Handoff to the bot ----------------

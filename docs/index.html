@@ -96,6 +96,29 @@
         </span>
       </div>
 
+      <!-- Base (shared trigger/survey/user database) status -->
+      <div class="border-b border-border bg-panel px-4 sm:px-6 py-2.5 text-xs sm:text-sm" x-show="selectedGroupId">
+        <template x-if="!currentBaseId">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+            <span class="text-textDim">Опрос, триггеры и участники — только этой группы.</span>
+            <div class="flex gap-2">
+              <button @click="openCreateBaseModal" class="border border-border px-2 py-1 hover:border-yellow transition-colors whitespace-nowrap">Сделать общей базой</button>
+              <button @click="openAttachBaseModal" class="border border-border px-2 py-1 hover:border-yellow transition-colors whitespace-nowrap">Подключить чужую</button>
+            </div>
+          </div>
+        </template>
+        <template x-if="currentBaseId">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+            <span>
+              <i class="fa-solid fa-database text-yellow mr-1.5"></i>База:
+              <span class="text-yellow" x-text="currentBaseName"></span>
+              <span x-show="!isBaseOwner" class="text-textDim">— общая, только просмотр</span>
+            </span>
+            <button @click="doDetachBase" class="border border-border px-2 py-1 hover:border-yellow transition-colors whitespace-nowrap">Отключить базу</button>
+          </div>
+        </template>
+      </div>
+
       <!-- Tabs -->
       <nav class="border-b border-border bg-panel px-4 sm:px-6 flex gap-1 overflow-x-auto" x-show="groups.length > 0">
         <button @click="tab='users'" :class="tab==='users' ? 'border-b-2 border-yellow text-yellow' : 'text-textDim'" class="px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">
@@ -119,8 +142,11 @@
           </ol>
         </div>
 
-        <div x-show="pendingSaveNotice" class="border border-yellow text-yellow bg-panel p-3 text-xs mb-4">
+        <div x-show="pendingSaveNotice && isBaseOwner" class="border border-yellow text-yellow bg-panel p-3 text-xs mb-4">
           Сохранение закроет эту панель — так работает Telegram. Бот пришлёт кнопку, чтобы открыть её снова.
+        </div>
+        <div x-show="currentBaseId && !isBaseOwner" class="border border-border text-textDim bg-panel p-3 text-xs mb-4">
+          <i class="fa-solid fa-eye mr-1.5"></i>Эта база принадлежит другому администратору — можно смотреть, редактирование недоступно.
         </div>
 
         <!-- USERS TAB -->
@@ -131,7 +157,7 @@
               <button @click="loadGroupData" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap">
                 <i class="fa-solid fa-rotate mr-1.5"></i>Обновить
               </button>
-              <button x-show="usersDirty" @click="saveUsers" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap">
+              <button x-show="usersDirty && isBaseOwner" @click="saveUsers" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap">
                 <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Сохранить правки
               </button>
             </div>
@@ -175,7 +201,7 @@
                   <img x-show="a.mediaPath" :src="rawUrl(a.mediaPath)" class="w-full border border-border" />
                 </template>
 
-                <div class="border-t border-border pt-3 flex gap-2 flex-wrap">
+                <div class="border-t border-border pt-3 flex gap-2 flex-wrap" x-show="isBaseOwner">
                   <template x-for="(a, key) in u.answers" :key="'btn-'+key">
                     <button @click="startEdit(u, key, a.value)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
                       <i class="fa-solid fa-pen mr-1"></i><span x-text="'Изм. ' + a.field"></span>
@@ -192,13 +218,14 @@
 
         <!-- SURVEY TAB -->
         <div x-show="tab==='survey' && groups.length > 0">
+          <fieldset :disabled="!isBaseOwner" class="contents">
           <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <h2 class="text-sm sm:text-base font-semibold">Шаги опроса</h2>
             <div class="flex gap-2">
-              <button @click="addStep" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap">
+              <button @click="addStep" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap disabled:opacity-40">
                 <i class="fa-solid fa-plus mr-1.5"></i>Добавить шаг
               </button>
-              <button @click="saveSurvey" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap">
+              <button @click="saveSurvey" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap disabled:opacity-40">
                 <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Сохранить
               </button>
             </div>
@@ -209,46 +236,48 @@
               <div class="border border-border bg-panel p-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label class="flex flex-col gap-1 text-xs text-textDim">ID шага
-                    <input x-model="step.id" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+                    <input x-model="step.id" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" />
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim">Поле (название данных)
-                    <input x-model="step.field" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+                    <input x-model="step.field" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" />
                     <span class="text-yellow" x-show="step.field">Переменная для триггеров: <span x-text="'{' + step.field + '}'"></span></span>
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">Текст вопроса
-                    <input x-model="step.question" class="bg-panel2 border border-border px-2 py-1.5 text-text" />
+                    <input x-model="step.question" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" />
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim">Тип ответа
-                    <select x-model="step.type" class="bg-panel2 border border-border px-2 py-1.5 text-text">
+                    <select x-model="step.type" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50">
                       <option value="text">Текст</option>
                       <option value="photo">Фото</option>
                       <option value="file">Файл</option>
                     </select>
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim">Следующий шаг (по умолчанию)
-                    <input x-model="step.next" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="id следующего шага" />
+                    <input x-model="step.next" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" placeholder="id следующего шага" />
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">
                     Ветвления (ответ → id шага): ответ1=шаг1, ответ2=шаг2
-                    <input :value="branchesToText(step.branches)" @change="step.branches = textToBranches($event.target.value)" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="pc=pc_specs, консоль=console_type" />
+                    <input :value="branchesToText(step.branches)" @change="step.branches = textToBranches($event.target.value)" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" placeholder="pc=pc_specs, консоль=console_type" />
                   </label>
                 </div>
                 <div class="flex justify-end mt-3">
-                  <button @click="removeStep(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
+                  <button @click="removeStep(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors disabled:opacity-40">
                     <i class="fa-solid fa-trash mr-1"></i>Удалить шаг
                   </button>
                 </div>
               </div>
             </template>
           </div>
+          </fieldset>
         </div>
 
         <!-- TRIGGERS TAB -->
         <div x-show="tab==='triggers' && groups.length > 0">
+          <fieldset :disabled="!isBaseOwner" class="contents">
           <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <h2 class="text-sm sm:text-base font-semibold">Триггеры по ключевым словам</h2>
             <div class="flex gap-2">
-              <button @click="addTrigger" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap">
+              <button @click="addTrigger" class="text-xs sm:text-sm border border-border px-3 py-1.5 hover:border-yellow transition-colors whitespace-nowrap disabled:opacity-40">
                 <i class="fa-solid fa-plus mr-1.5"></i>Добавить триггер
               </button>
               <button @click="saveTriggers" class="text-xs sm:text-sm border border-yellow text-yellow px-3 py-1.5 whitespace-nowrap">
@@ -271,10 +300,10 @@
               <div class="border border-border bg-panel p-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label class="flex flex-col gap-1 text-xs text-textDim">Ключевое слово / фраза
-                    <input x-model="trigger.keyword" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="например: правила" />
+                    <input x-model="trigger.keyword" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" placeholder="например: правила" />
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim">Тип совпадения
-                    <select x-model="trigger.matchType" class="bg-panel2 border border-border px-2 py-1.5 text-text">
+                    <select x-model="trigger.matchType" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50">
                       <option value="contains">Содержит слово где угодно в сообщении</option>
                       <option value="exact">Сообщение целиком равно фразе</option>
                     </select>
@@ -284,22 +313,59 @@
                     Учитывать регистр букв
                   </label>
                   <label class="flex flex-col gap-1 text-xs text-textDim md:col-span-2">Ответ бота
-                    <textarea x-model="trigger.response" rows="3" class="bg-panel2 border border-border px-2 py-1.5 text-text" placeholder="Привет, {Имя}! Вот правила группы..."></textarea>
+                    <textarea x-model="trigger.response" rows="3" class="bg-panel2 border border-border px-2 py-1.5 text-text disabled:opacity-50" placeholder="Привет, {Имя}! Вот правила группы..."></textarea>
                   </label>
                 </div>
                 <div class="flex justify-end mt-3">
-                  <button @click="removeTrigger(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors">
+                  <button @click="removeTrigger(idx)" class="text-xs border border-border px-2 py-1 hover:border-yellow transition-colors disabled:opacity-40">
                     <i class="fa-solid fa-trash mr-1"></i>Удалить триггер
                   </button>
                 </div>
               </div>
             </template>
           </div>
+          </fieldset>
         </div>
 
       </main>
     </div>
   </template>
+
+  <!-- Create base modal -->
+  <div x-show="createBaseModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+    <div class="bg-panel border border-border p-5 sm:p-6 w-full max-w-md">
+      <h3 class="font-semibold mb-2">Новая общая база</h3>
+      <p class="text-sm text-textDim mb-3">
+        Опрос, триггеры и участники этой группы станут общей базой — любой
+        администратор сможет подключить к ней свою группу, но изменять
+        содержимое сможете только вы.
+      </p>
+      <input x-model="newBaseName" placeholder="Например: WARZONE" class="w-full bg-panel2 border border-border px-3 py-2 text-text mb-3" />
+      <div class="flex justify-end gap-2">
+        <button @click="createBaseModal=false" class="border border-border px-3 py-1.5 text-sm">Отмена</button>
+        <button @click="confirmCreateBase" class="border border-yellow text-yellow px-3 py-1.5 text-sm">Создать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attach base modal -->
+  <div x-show="attachBaseModal" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+    <div class="bg-panel border border-border p-5 sm:p-6 w-full max-w-md">
+      <h3 class="font-semibold mb-3">Подключить существующую базу</h3>
+      <div class="flex flex-col gap-2 max-h-64 overflow-y-auto mb-3">
+        <template x-for="b in allBases" :key="b.id">
+          <button @click="confirmAttachBase(b.id)" class="border border-border px-3 py-2 text-left text-sm hover:border-yellow transition-colors flex justify-between items-center gap-2">
+            <span x-text="b.name" class="truncate"></span>
+            <i class="fa-solid fa-arrow-right text-yellow shrink-0"></i>
+          </button>
+        </template>
+        <div x-show="allBases.length===0" class="text-textDim text-sm">Пока никто не создал ни одной базы.</div>
+      </div>
+      <div class="flex justify-end">
+        <button @click="attachBaseModal=false" class="border border-border px-3 py-1.5 text-sm">Закрыть</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast -->
   <div x-show="toast" x-cloak x-text="toast" class="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto bg-panel border border-yellow px-4 py-2 text-sm text-center sm:text-left"></div>

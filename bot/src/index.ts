@@ -14,6 +14,10 @@ import {
   loadGroups,
   loadTriggers,
   saveTriggers,
+  createBase,
+  getBase,
+  attachGroupToBase,
+  detachGroupFromBase,
 } from './lib/storage';
 import { commitDataChanges } from './lib/git';
 import { logToGroup } from './lib/notify';
@@ -535,7 +539,13 @@ bot.action('confirm_no', async (ctx) => {
 // ---------------------------------------------------------------------------
 
 interface PanelSavePayload {
-  action: 'save_triggers' | 'save_survey' | 'save_users';
+  action:
+    | 'save_triggers'
+    | 'save_survey'
+    | 'save_users'
+    | 'create_base'
+    | 'attach_base'
+    | 'detach_base';
   groupChatId: number;
   payload: unknown;
 }
@@ -555,6 +565,51 @@ bot.on(message('web_app_data'), async (ctx) => {
   if (!group || group.addedByUserId !== ctx.from.id) {
     await ctx.reply('У вас нет прав на изменение этой группы.');
     return;
+  }
+
+  if (data.action === 'create_base') {
+    const name = String((data.payload as { name?: string })?.name || '').trim().slice(0, 60);
+    if (!name) {
+      await ctx.reply('Укажите название базы.');
+      return;
+    }
+    const base = createBase(name, ctx.from.id, ctx.from.username);
+    attachGroupToBase(data.groupChatId, base.id);
+    await commitDataChanges(`Создана база «${name}» (${base.id}), группа ${data.groupChatId} подключена`);
+    await sendPanelButton(ctx, `✅ База «${name}» создана и подключена к этой группе.`);
+    return;
+  }
+
+  if (data.action === 'attach_base') {
+    const baseId = String((data.payload as { baseId?: string })?.baseId || '');
+    const base = getBase(baseId);
+    if (!base) {
+      await ctx.reply('База не найдена — возможно, её уже удалили.');
+      return;
+    }
+    attachGroupToBase(data.groupChatId, baseId);
+    await commitDataChanges(`Группа ${data.groupChatId} подключена к базе «${base.name}» (${baseId})`);
+    await sendPanelButton(ctx, `✅ Группа подключена к общей базе «${base.name}».`);
+    return;
+  }
+
+  if (data.action === 'detach_base') {
+    detachGroupFromBase(data.groupChatId);
+    await commitDataChanges(`Группа ${data.groupChatId} отключена от общей базы`);
+    await sendPanelButton(ctx, '✅ Группа отключена от общей базы — используются собственные данные.');
+    return;
+  }
+
+  // Editing survey/triggers/users content of a shared base is restricted to
+  // its owner, even for another admin whose group is merely attached to it.
+  if (group.baseId) {
+    const base = getBase(group.baseId);
+    if (!base || base.ownerUserId !== ctx.from.id) {
+      await ctx.reply(
+        'Эта группа подключена к общей базе, которой владеет другой администратор — редактировать её содержимое можете только он.'
+      );
+      return;
+    }
   }
 
   switch (data.action) {
