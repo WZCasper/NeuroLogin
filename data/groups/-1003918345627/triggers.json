@@ -2,7 +2,7 @@
   {
     "id": "trigger_95u408",
     "keyword": "Ник",
-    "matchType": "contains",
+    "matchType": "exact",
     "caseSensitive": false,
     "response": "{Имя}\n{Activision ID}"
   }
