@@ -1,0 +1,9 @@
+[
+  {
+    "id": "trigger_goj64p",
+    "keyword": "ник",
+    "matchType": "exact",
+    "caseSensitive": false,
+    "response": "{Имя}\n{Activision ID}"
+  }
+]
